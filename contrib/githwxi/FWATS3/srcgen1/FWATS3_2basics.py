@@ -5,6 +5,13 @@
 # Not decision yet as to whether concrete syntax (level-0) is needed.
 ########################################################################
 ########################################################################
+from abc import ABC
+from enum import Enum
+from dataclasses import dataclass
+from typing import \
+    Generic, TypeVar, Callable
+########################################################################
+########################################################################
 type nint = int
 type sint = int
 type strn = str
@@ -13,11 +20,37 @@ type d2var = str
 type d2cst = str
 ########################################################################
 ########################################################################
-from abc import ABC
-from enum import Enum
-from dataclasses import dataclass
-from typing import \
-    Generic, TypeVar, Callable
+T = TypeVar("T")
+X = TypeVar("X")
+Y = TypeVar("Y")
+########################################################################
+########################################################################
+#
+@dataclass
+class fnoptn[T](ABC):
+    pass
+@dataclass
+class fnoptn_nil[T](fnoptn[T]):
+    pass
+@dataclass
+class fnoptn_cons[T](fnoptn[T]):
+    arg1: T
+    pass
+#
+########################################################################
+#
+@dataclass
+class fnlist[T](ABC):
+    pass
+@dataclass
+class fnlist_nil[T](fnlist[T]):
+    pass
+@dataclass
+class fnlist_cons[T](fnlist[T]):
+    arg1: T
+    arg2: fnlist[T]
+    pass
+#
 ########################################################################
 ########################################################################
 @dataclass
@@ -32,6 +65,8 @@ class D2E000(ABC):
     ctag = "D2E000"
     pass
 type d2exp = D2E000
+type d2expopt = fnoptn[d2exp]
+type d2explst = fnlist[d2exp]
 ########################################################################
 ########################################################################
 @dataclass
@@ -39,6 +74,7 @@ class D2C000(ABC):
     ctag = "D2C000"
     pass
 type d2ecl = D2C000
+type d2eclist = fnlist[d2ecl]
 ########################################################################
 ########################################################################
 @dataclass
@@ -109,6 +145,30 @@ class D2Eif0(D2E000):
     arg2: d2exp
     arg3: d2exp
     ctag = "D2Eif0"
+########################################################################
+@dataclass
+class D2Etupl(D2E000):
+    arg1: d2explst
+    ctag = "D2Etupl"
+########################################################################
+@dataclass
+class D2Eproj(D2E000):
+    arg1: nint
+    arg2: d2exp
+    ctag = "D2Eproj"
+########################################################################
+@dataclass
+class D2Elets(D2E000):
+    arg1: d2eclist
+    arg2: d2expopt
+    ctag = "D2Elets"
+########################################################################
+########################################################################
+@dataclass
+class D2Clocal(D2C000):
+    arg1: d2eclist
+    arg2: d2eclist
+    ctag = "D2Clocal"
 ########################################################################
 ########################################################################
 # end of [FWATS3_2basics.py]
