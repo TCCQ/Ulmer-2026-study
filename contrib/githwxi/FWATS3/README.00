@@ -1,0 +1,6 @@
+FWATS3: Feather-Weight ATS3
+
+FWATS3 is primarily designed for the purpose of studying some of the
+core features of ATS3. In particular, FWATS3 should provide a formal
+basis for studying the feature of templates (as is supported in ATS3)
+and its implementation.
