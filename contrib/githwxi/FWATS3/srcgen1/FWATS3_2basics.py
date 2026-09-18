@@ -9,8 +9,8 @@ type nint = int
 type sint = int
 type strn = str
 ########################################################################
-type dvar = str
-type dcst = str
+type d2var = str
+type d2cst = str
 ########################################################################
 ########################################################################
 from abc import ABC
@@ -24,14 +24,14 @@ from typing import \
 class S2E000(ABC):
     ctag = "S2E000"
     pass
-type s0exp = S2E000
+type s2exp = S2E000
 ########################################################################
 ########################################################################
 @dataclass
 class D2E000(ABC):
     ctag = "D2E000"
     pass
-type d0exp = D2E000
+type d2exp = D2E000
 ########################################################################
 ########################################################################
 @dataclass
@@ -52,20 +52,25 @@ class D2Estr(D2E000):
 @dataclass
 class D2Eop1(D2E000):
     name: strn
-    arg1: d0exp
+    arg1: d2exp
     ctag = "D2Eop1"
 ########################################################################
 @dataclass
 class D2Eop2(D2E000):
     name: strn
-    arg1: d0exp
-    arg2: d0exp
+    arg1: d2exp
+    arg2: d2exp
     ctag = "D2Eop2"
 ########################################################################
 @dataclass
 class D2Evar(D2E000):
-    arg1: dvar
+    arg1: d2var
     ctag = "D2Evar"
+########################################################################
+@dataclass
+class D2Ecst(D2E000):
+    arg1: d2cst
+    ctag = "D2Ecst"
 ########################################################################
 #
 # lam x. body(x)
@@ -73,29 +78,29 @@ class D2Evar(D2E000):
 # 
 @dataclass
 class D2Elam(D2E000):
-    arg1: dvar
-    arg2: d0exp
+    arg1: d2var
+    arg2: d2exp
     ctag = "D2Elam"
 #
 @dataclass
 class D2Efix(D2E000):
-    arg1: dvar
-    arg2: dvar
-    arg3: d0exp
+    arg1: d2var
+    arg2: d2var
+    arg3: d2exp
     ctag = "D2Efix"
 #
 ########################################################################
 @dataclass
 class D2Eapp(D2E000):
-    arg1: d0exp
-    arg2: d0exp
+    arg1: d2exp
+    arg2: d2exp
     ctag = "D2Eapp"
 ########################################################################
 @dataclass
 class D2Eif0(D2E000):
-    arg1: d0exp
-    arg2: d0exp
-    arg3: d0exp
+    arg1: d2exp
+    arg2: d2exp
+    arg3: d2exp
     ctag = "D2Eif0"
 ########################################################################
 ########################################################################
