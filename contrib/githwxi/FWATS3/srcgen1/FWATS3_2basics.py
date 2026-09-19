@@ -62,6 +62,7 @@ class fnlist_cons[T](fnlist[T]):
 class S2E000(ABC):
     ctag = "S2E000"
     pass
+type s2varlst = fnlist[s2var]
 type s2exp = S2E000
 type s2explst = fnlist[s2exp]
 ########################################################################
