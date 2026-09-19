@@ -139,6 +139,7 @@ class D2Evar(D2E000):
 @dataclass
 class D2Ecst(D2E000):
     arg1: d2cst
+    arg2: s2explst
     ctag = "D2Ecst"
 ########################################################################
 #
@@ -148,14 +149,17 @@ class D2Ecst(D2E000):
 @dataclass
 class D2Elam(D2E000):
     arg1: d2var
-    arg2: d2exp
+    arg2: s2exp
+    arg3: d2exp
     ctag = "D2Elam"
 #
 @dataclass
 class D2Efix(D2E000):
     arg1: d2var
     arg2: d2var
-    arg3: d2exp
+    arg3: s2exp
+    arg4: d2exp
+    arg5: s2exp
     ctag = "D2Efix"
 #
 ########################################################################
