@@ -12,6 +12,9 @@ from typing import \
     Generic, TypeVar, Callable
 ########################################################################
 ########################################################################
+#
+# python3.12
+#
 type nint = int
 type sint = int
 type strn = str
