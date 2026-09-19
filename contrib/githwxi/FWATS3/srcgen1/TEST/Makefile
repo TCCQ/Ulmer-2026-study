@@ -10,13 +10,17 @@ all:: tcheck
 all:: interp
 ########################################################################
 ########################################################################
-.PHONY: all test typecheck check
+.PHONY: all interp tcheck
 ########################################################################
 ########################################################################
-interp: ; \
+interp:: ; \
 (cd .. && $(PYTHON) -B -m unittest discover -s TEST -p 'test00_2interp.py' -v)
+interp:: ; \
+(cd .. && $(PYTHON) -B -m unittest discover -s TEST -p 'test01_2interp.py' -v)
 ########################################################################
-tcheck: ; \
+tcheck:: ; \
 (cd .. && $(MYPY) --strict FWATS3_2basics.py FWATS3_2interp.py TEST/test00_2interp.py)
+tcheck:: ; \
+(cd .. && $(MYPY) --strict FWATS3_2basics.py FWATS3_2interp.py TEST/test01_2interp.py)
 ########################################################################
 ########################################################################
