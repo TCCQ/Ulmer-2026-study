@@ -2,7 +2,7 @@ import unittest
 
 from FWATS3_2basics import (
     D2C000, D2Cbind, D2Cimpl, D2Clocal, d2ecl, fnlist_cons, fnlist_nil,
-    D2Etupl, D2Elets, d2exp, fnoptn_cons, fnoptn_nil,
+    D2Eproj, D2Etupl, D2Elets, d2exp, fnoptn_cons, fnoptn_nil,
     D2Eapp, D2Efix, D2Eif0, D2Eint, D2Elam, D2Eop2, D2Estr, D2Evar, S2E000,
 )
 from FWATS3_2interp import (
@@ -12,6 +12,17 @@ from FWATS3_2interp import (
 
 
 class InterpreterTests(unittest.TestCase):
+    def test_projection_rejects_invalid_operands_and_indices(self) -> None:
+        with self.assertRaises(TypeError):
+            d2exp_evaluate(D2Eproj(0, D2Eint(1)))
+        singleton = D2Etupl(fnlist_cons[d2exp](D2Eint(7), fnlist_nil()))
+        for index in (-1, 1):
+            with self.subTest(index=index):
+                with self.assertRaises(IndexError):
+                    d2exp_evaluate(D2Eproj(index, singleton))
+        with self.assertRaises(IndexError):
+            d2exp_evaluate(D2Eproj(0, D2Etupl(fnlist_nil())))
+
     def test_empty_tuple(self) -> None:
         self.assertEqual(D2Vnil(), D2Vtupl(fnlist_nil()))
         self.assertEqual(

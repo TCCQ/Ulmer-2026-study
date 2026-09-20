@@ -19,6 +19,10 @@ def D2Vnil() -> D2Vtupl:
     return D2Vtupl(fnlist_nil())
 ```
 
+`D2Eproj(index, expression)` selects a tuple element using a zero-based index.
+Negative or out-of-range indices raise `IndexError`; projecting from a
+non-tuple value raises `TypeError`.
+
 `d2ecl_evaluate(decl, denv)` returns an extended environment for `D2Cbind`
 and `D2Clocal`, leaving the input environment unchanged. Binding expressions
 use the incoming environment. Local declarations export only their public
@@ -66,6 +70,14 @@ accumulator: `loop(n)(acc)` returns `acc` when `n == 0`, otherwise it calls
 `loop(n - 1)(n * acc)`. Tests compare `loop(n)(1)` against Python's
 `math.factorial` and check a non-unit initial accumulator. The interpreter
 uses the Python call stack and does not perform tail-call optimization.
+
+The same test file implements Fibonacci with tuple state `(n, a, b)`.
+Starting from `(n, 0, 1)`, each recursive step constructs `(n - 1, b, a + b)`
+using tuple projections; when `n` reaches zero, the function returns `a`.
+Tests include `F(0) = 0`, `F(1) = 1`, and `F(20) = 6765`.
+A `D2Elets` example binds `n = 10`, the Fibonacci function, and the initial
+tuple `(n, 0, 1)` in sequence, then calls the bound function in the let body
+and checks that the result is `55`.
 
 The Makefile defaults to `python3` and `mypy` on `PATH`. Override `PYTHON`
 or `MYPY` on the make command line to select another installation.

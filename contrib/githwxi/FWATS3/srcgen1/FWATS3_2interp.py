@@ -196,6 +196,23 @@ def d2exp_evaluate\
             result = fnlist_cons(dval, result)
         return D2Vtupl(result)
 ######
+    def f0_D2Eproj(dexp: D2Eproj) -> d2val:
+        dval = d2exp_evaluate(dexp.arg2, denv)
+        if not isinstance(dval, D2Vtupl):
+            raise TypeError(f"f0_D2Eproj({dexp})")
+        index = dexp.arg1
+        if index < 0:
+            raise IndexError(index)
+        d2vs: d2valist = dval.arg1
+        while True:
+            if not isinstance(d2vs, fnlist_cons):
+                raise IndexError(dexp.arg1)
+            node: fnlist_cons[d2val] = d2vs
+            if index == 0:
+                return node.arg1
+            index -= 1
+            d2vs = node.arg2
+######
     def f0_D2Elets(dexp: D2Elets) -> d2val:
         denv_new = d2eclist_evaluate(dexp.arg1, denv)
         body = dexp.arg2
@@ -225,6 +242,7 @@ def d2exp_evaluate\
     elif isinstance(dexp, D2Eapp): return f0_D2Eapp(dexp)
     elif isinstance(dexp, D2Elets): return f0_D2Elets(dexp)
     elif isinstance(dexp, D2Etupl): return f0_D2Etupl(dexp)
+    elif isinstance(dexp, D2Eproj): return f0_D2Eproj(dexp)
     else:
         raise TypeError(f"d2exp_evaluate({dexp})")
 #
