@@ -68,24 +68,24 @@ type s2explst = fnlist[s2exp]
 ########################################################################
 ########################################################################
 @dataclass
-class S2Ecns(ABC):
+class S2Econ(S2E000):
     arg1: strn
     arg2: s2explst
-    ctag = "S2Ecns"
+    ctag = "S2Econ"
 ########################################################################
 @dataclass
-class S2Evar(ABC):
+class S2Evar(S2E000):
     arg1: s2var
     ctag = "S2Evar"
 ########################################################################
 @dataclass
-class S2Efun(ABC):
+class S2Efun(S2E000):
     arg1: s2exp
     arg2: s2exp
     ctag = "S2Efun"
 ########################################################################
 @dataclass
-class S2Etupl(ABC):
+class S2Etupl(S2E000):
     arg1: s2explst
     ctag = "S2Etupl"
 ########################################################################

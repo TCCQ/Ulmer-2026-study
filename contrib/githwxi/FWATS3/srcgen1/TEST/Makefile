@@ -8,9 +8,10 @@ all::
 ########################################################################
 all:: tcheck
 all:: interp
+all:: staexp
 ########################################################################
 ########################################################################
-.PHONY: all interp tcheck
+.PHONY: all interp staexp tcheck
 ########################################################################
 ########################################################################
 interp:: ; \
@@ -22,5 +23,9 @@ tcheck:: ; \
 (cd .. && $(MYPY) --strict FWATS3_2basics.py FWATS3_2interp.py TEST/test00_2interp.py)
 tcheck:: ; \
 (cd .. && $(MYPY) --strict FWATS3_2basics.py FWATS3_2interp.py TEST/test01_2interp.py)
+staexp:: ; \
+(cd .. && $(PYTHON) -B -m unittest discover -s TEST -p 'test*_2staexp.py' -v)
+tcheck:: ; \
+(cd .. && $(MYPY) --strict FWATS3_2staexp.py TEST/test00_2staexp.py)
 ########################################################################
 ########################################################################

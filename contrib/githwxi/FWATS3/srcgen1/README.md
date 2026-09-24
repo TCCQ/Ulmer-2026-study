@@ -1,6 +1,19 @@
 # Level-2 Python implementation
 
 `FWATS3_2basics.py` defines the syntax and linked-list/option types.
+`FWATS3_2staexp.py` provides `s2exp_equal(left, right)` for structural
+type equality: constructor kinds and names must match, variables compare by
+name, and function and tuple components and constructor arguments compare
+recursively in order. Argument counts must match. Two bare `S2E000()`
+placeholders compare equal; a placeholder does not equal a concrete type.
+Run its tests with `make -C TEST staexp`.
+`s2exp_match(pattern, target)` binds variables in the pattern to target
+types, returning `fnoptn_cons(context)` on success (including `CTXnil()`
+when no bindings are needed) or `fnoptn_nil()` on failure. Repeated pattern
+variables require structurally equal target types. Target variables remain
+literal; matching does not perform unification. Each `CTXcns` contains a
+name, its matched type, and the remaining context. New bindings are prepended
+during left-to-right traversal, and each call starts with an empty context.
 `FWATS3_2interp.py` provides `d2exp_evaluate` for integer, boolean, and string
 literals, integer operators, conditionals, tuples, let expressions, closures,
 and recursive functions.
@@ -48,8 +61,9 @@ Run from this directory:
 make -C TEST
 ```
 
-The default target checks both modules and `TEST/test*_2interp.py` with
-`mypy --strict`, then runs those test files. To run either check separately:
+The default target checks all three modules and their tests with
+`mypy --strict`, then runs the interpreter and structural equality tests.
+To run interpreter tests or type checking separately:
 
 ```sh
 make -C TEST interp
