@@ -11,7 +11,7 @@ dataclasses import dataclass
 
 from FWATS3_2basics import (
     S2E000, S2Econ, S2Evar, S2Efun, S2Etupl,
-    strn, s2exp, s2explst, fnlist_cons, fnlist_nil,
+    strn, s2exp, d2ecl, s2explst, fnlist, fnlist_cons, fnlist_nil,
     fnoptn, fnoptn_cons, fnoptn_nil,
 )
 
@@ -33,7 +33,7 @@ class CTXnil(CTX000):
 (frozen=True)
 class CTXcns(CTX000):
     arg1: strn
-    arg2: s2exp | D2Cimpl 
+    arg2: s2exp | d2ecl
     arg3: s2ctx
     ctag = "CTXcns"
 #
@@ -101,8 +101,11 @@ def s2exp_match(s2el: s2exp, s2er: s2exp) -> fnoptn[s2ctx]:
             rest = ctx
             while isinstance(rest, CTXcns):
                 if s2el.arg1 == rest.arg1:
-                    if s2exp_equal(rest.arg2, s2er):
-                        return fnoptn_cons(ctx)
+                    if isinstance(rest.arg2, S2E000):
+                        if s2exp_equal(rest.arg2, s2er):
+                            return fnoptn_cons(ctx)
+                        else:
+                            return fnoptn_nil()
                     else:
                         return fnoptn_nil()
                 else:
@@ -263,3 +266,12 @@ def s2ctx_merge(s2el: s2ctx, s2er: s2ctx) -> fnoptn[s2ctx]:
     return fnoptn_cons(result)
 
 ########################################################################
+
+def s2ctx_fold_merge(acc: s2ctx, l: fnlist[s2ctx]) -> fnoptn[s2ctx]:
+    while isinstance(l, fnlist_cons):
+        x = s2ctx_merge(acc, l.arg1)
+        if isinstance(x,fnoptn_cons):
+            acc = x.arg1
+        else:
+            return fnoptn()
+    return fnoptn_cons(acc)

@@ -36,10 +36,6 @@ traverse the top level from top to bottom:
       splice body of matching Timp with arguments substituted
       continue recursively traversing resulting expr
 """
-
-type s2subst = fnlist[tuple[S2Evar, s2exp]]
-
-
 def s2tmp_collect(e: d2ecl, ctx: s2ctx) -> fnoptn[s2ctx]:
     if False:
         return fnoptn_nil()
@@ -53,19 +49,21 @@ def s2tmp_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
     if isinstance(tuse.arg1, D2Ecst):
         name = tuse.arg1.arg1
     else:
-        return fnoptn_nil
+        return fnoptn_nil()
     rest = ctx
-    while isinstance(rest, fn_list_cons):
-        if rest.arg1 == name and isinstance(rest.arg2, D2impl):
+    while isinstance(rest, fnlist_cons):
+        if rest.arg1 == name and isinstance(rest.arg2, D2Cimpl):
             tibody = rest.arg2.arg2
             tivars = rest.arg2.arg3 # do we need this?
             tiargs = rest.arg2.arg4
 
-            tapp_args = e.arg2
+            tapp_args = tuse.arg2
             # want zipWith s2exp_match tiargs tapp_args
             # then sequence options
             # then merge substitutions, checking for conflicts
             # then apply to body and return
+            return fnoptn_nil()
+    return fnoptn_nil()
             
 # SNIP -------------------------------
 
@@ -150,7 +148,7 @@ def d2exp_no_tapp(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
             raise TypeError("TODO replace with substitute body from context or fail")
         elif type(dexp) is D2E000:
             return dexp
-        raise TypeError(f"Unsupported level-2 expression: {type(dexp).__name__}")p
+        raise TypeError(f"Unsupported level-2 expression: {type(dexp).__name__}")
 
     result = f0_d2exp(dexp)
     if type(result) is D2E000:
