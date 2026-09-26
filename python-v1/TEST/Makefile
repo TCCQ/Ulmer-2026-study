@@ -19,9 +19,7 @@ all:: interp
 interp:: ; \
 (cd .. && $(PYTHON) -B -m unittest discover -s TEST -p 'test01_2interp.py' -v)
 ########################################################################
-# tcheck:: ; \
-# (cd .. && $(MYPY) --strict FWATS3_2staexp.py TEST/test00_2staexp.py)
 tcheck:: ; \
-(cd .. && $(MYPY) --strict FWATS3_2basics.py FWATS3_2interp.py TEST/test00_2interp.py)
+(cd .. && $(MYPY) --strict TEST/test00_2interp.py)
 ########################################################################
 ########################################################################
