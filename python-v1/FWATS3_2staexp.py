@@ -33,7 +33,7 @@ class CTXnil(CTX000):
 (frozen=True)
 class CTXcns(CTX000):
     arg1: strn
-    arg2: s2exp
+    arg2: s2exp | D2Cimpl 
     arg3: s2ctx
     ctag = "CTXcns"
 #
@@ -155,5 +155,111 @@ def s2exp_match(s2el: s2exp, s2er: s2exp) -> fnoptn[s2ctx]:
             return fnoptn_nil()
 
     return f0_s2exp(s2el, s2er, CTXnil())
+
+########################################################################
+
+def s2exp_subst(s2el: s2exp, ctx: s2ctx) -> s2exp:
+    """
+    Replace variables in the left expression by their bindings in the context.
+    Substitutions are simultaneous: a binding is not substituted again.
+    The newest binding naming a variable wins; unbound variables are kept.
+    Inputs are unchanged, and new nodes are built for every constructor.
+    """
+    def f0_s2var(s2ev: S2Evar) -> fnoptn[s2exp]:
+        rest = ctx
+        while isinstance(rest, CTXcns):
+            if s2ev.arg1 == rest.arg1:
+                if isinstance(rest.arg2, S2E000):
+                    return fnoptn_cons(rest.arg2)
+                else:
+                    raise TypeError(
+                        f"Unsupported binding: {type(rest.arg2).__name__}")
+            else:
+                rest = rest.arg3
+        return fnoptn_nil()
+
+    def f0_s2exp(s2el: s2exp) -> s2exp:
+        if False:
+            return S2E000()
+        elif isinstance(s2el, S2Evar):
+            found = f0_s2var(s2el)
+            if isinstance(found, fnoptn_cons):
+                s2er: s2exp = found.arg1
+                return s2er
+            else:
+                return s2el
+        elif isinstance(s2el, S2Econ):
+            return S2Econ(s2el.arg1, f0_s2explst(s2el.arg2))
+        elif isinstance(s2el, S2Efun):
+            return S2Efun(f0_s2exp(s2el.arg1), f0_s2exp(s2el.arg2))
+        elif isinstance(s2el, S2Etupl):
+            return S2Etupl(f0_s2explst(s2el.arg1))
+        elif type(s2el) is S2E000:
+            return S2E000()
+        raise TypeError(f"Unsupported static expression: {type(s2el).__name__}")
+
+    def f0_s2explst(s2el: s2explst) -> s2explst:
+        s2vs: list[s2exp] = []
+        while isinstance(s2el, fnlist_cons):
+            s2vs.append(f0_s2exp(s2el.arg1))
+            s2el = s2el.arg2
+        if not isinstance(s2el, fnlist_nil):
+            raise TypeError(f"f0_s2explst({s2el})")
+        result: s2explst = fnlist_nil()
+        for s2v in reversed(s2vs):
+            result = fnlist_cons(s2v, result)
+        return result
+
+    return f0_s2exp(s2el)
+
+########################################################################
+
+def s2ctx_merge(s2el: s2ctx, s2er: s2ctx) -> fnoptn[s2ctx]:
+    """
+    Combine two contexts as substitutions. A variable bound in both must
+    have equal bindings, else fnoptn_nil. Otherwise the bindings are
+    unioned, left context first; inputs are unchanged.
+    """
+    def f0_search(s2ev: strn, s2er: s2ctx) -> fnoptn[s2ctx]:
+        rest = s2er
+        while isinstance(rest, CTXcns):
+            if s2ev == rest.arg1:
+                return fnoptn_cons(rest)
+            else:
+                rest = rest.arg3
+        return fnoptn_nil()
+
+    def f0_agree(s2el: CTXcns, s2er: CTXcns) -> bool:
+        if isinstance(s2el.arg2, S2E000) and isinstance(s2er.arg2, S2E000):
+            return s2exp_equal(s2el.arg2, s2er.arg2)
+        else:
+            return s2el.arg2 == s2er.arg2
+
+    def f0_check(s2el: s2ctx, s2er: s2ctx) -> bool:
+        rest = s2el
+        while isinstance(rest, CTXcns):
+            found = f0_search(rest.arg1, s2er)
+            if isinstance(found, fnoptn_cons):
+                if not f0_agree(rest, found.arg1):
+                    return False
+            rest = rest.arg3
+        return True
+
+    if not f0_check(s2el, s2er):
+        return fnoptn_nil()
+    cells: list[CTXcns] = []
+    rest = s2el
+    while isinstance(rest, CTXcns):
+        cells.append(rest)
+        rest = rest.arg3
+    rest = s2er
+    while isinstance(rest, CTXcns):
+        if isinstance(f0_search(rest.arg1, s2el), fnoptn_nil):
+            cells.append(rest)
+        rest = rest.arg3
+    result: s2ctx = CTXnil()
+    for cell in reversed(cells):
+        result = CTXcns(cell.arg1, cell.arg2, result)
+    return fnoptn_cons(result)
 
 ########################################################################
