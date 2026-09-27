@@ -8,6 +8,7 @@ Template resolution on level-2 static expressions.
 from abc import ABC
 from \
 dataclasses import dataclass
+from typing import Callable
 
 from FWATS3_2basics import (
     S2E000, S2Econ, S2Evar, S2Efun, S2Etupl,
@@ -16,12 +17,13 @@ from FWATS3_2basics import (
     D2Cbind, D2Cimpl, D2Clocal,
     strn, s2exp, s2explst, fnlist, fnlist_cons, fnlist_nil,
     d2exp, d2expopt, d2explst, d2ecl, d2eclist,
-    fnoptn, fnoptn_cons, fnoptn_nil,
+    fnoptn, fnoptn_cons, fnoptn_nil, sequence, fnlist_zipWith2
 )
 
 from FWATS3_2staexp import (
     s2ctx, CTXnil, CTXcns, s2exp_equal, s2explst_equal, 
-    s2exp_match, s2exp_subst
+    s2exp_match, s2exp_subst, s2ctx_fold_merge,
+    d2exp_subst
 )
 
 """
@@ -44,7 +46,8 @@ def s2tmp_collect(e: d2ecl, ctx: s2ctx) -> fnoptn[s2ctx]:
     else:
         return fnoptn_cons(ctx)
 
-def s2tmp_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
+# does one step substitution, does NOT recursively expand
+def t2_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
     name = ""
     if isinstance(tuse.arg1, D2Ecst):
         name = tuse.arg1.arg1
@@ -54,20 +57,30 @@ def s2tmp_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
     while isinstance(rest, fnlist_cons):
         if rest.arg1 == name and isinstance(rest.arg2, D2Cimpl):
             tibody = rest.arg2.arg2
-            tivars = rest.arg2.arg3 # do we need this?
+            # tivars = rest.arg2.arg3           # do we need this?
             tiargs = rest.arg2.arg4
 
             tapp_args = tuse.arg2
-            # want zipWith s2exp_match tiargs tapp_args
-            # then sequence options
-            # then merge substitutions, checking for conflicts
-            # then apply to body and return
-            return fnoptn_nil()
-    return fnoptn_nil()
-            
-# SNIP -------------------------------
 
-def d2exp_no_tapp(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
+            matchings: fnlist[fnoptn[s2ctx]] = fnlist_zipWith2(tiargs, tapp_args, s2exp_match)
+            ctxs = sequence(matchings)
+            if isinstance(ctxs, fnoptn_cons):
+                subst = s2ctx_fold_merge(CTXnil(), ctxs.arg1)
+                body2: d2exp
+                if isinstance(subst, fnoptn_cons):
+                    try:
+                        body2 = d2exp_subst(tibody, subst.arg1)
+                        return fnoptn_cons(body2)
+                    except Exception as err:
+                        return fnoptn_nil()
+                else:
+                    # conflicting substiutitions shouldn't happen, don't continue searching
+                    return fnoptn_nil()   
+            else:
+                return fnoptn_nil()
+    return fnoptn_nil()
+
+def t2_replace(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
     def f0_d2eclist(decls: d2eclist) -> d2eclist:
         d2cs: list[d2ecl] = []
         while isinstance(decls, fnlist_cons):
@@ -88,7 +101,7 @@ def d2exp_no_tapp(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
         elif isinstance(decl, D2Clocal):
             return D2Clocal(f0_d2eclist(decl.arg1), f0_d2eclist(decl.arg2))
         else:
-            raise TypeError(f"d2exp_no_tapp({decl})")
+            raise TypeError(f"t2_replace({decl})")
 
     def f0_d2expopt(body: d2expopt) -> d2expopt:
         if isinstance(body, fnoptn_cons):
@@ -145,7 +158,17 @@ def d2exp_no_tapp(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
         elif isinstance(dexp, D2Elets):
             return D2Elets(f0_d2eclist(dexp.arg1), f0_d2expopt(dexp.arg2))
         elif isinstance(dexp, D2Etapp):
-            raise TypeError("TODO replace with substitute body from context or fail")
+            rep = t2_choose_impl(dexp, ctx)
+            if isinstance(rep, fnoptn_cons):
+                e2: d2exp
+                try:
+                    e2 = f0_d2exp(rep.arg1)
+                    rep = fnoptn_cons(e2)
+                except Exception as err:
+                    print(f"Saw {err} when resolveing {dexp} in {ctx}")
+                    raise TypeError(f"Can't resolve: {dexp} in {ctx}")
+            else:
+                raise TypeError(f"Can't resolve: {dexp} in {ctx}")
         elif type(dexp) is D2E000:
             return dexp
         raise TypeError(f"Unsupported level-2 expression: {type(dexp).__name__}")
