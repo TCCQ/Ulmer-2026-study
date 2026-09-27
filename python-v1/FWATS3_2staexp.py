@@ -279,7 +279,7 @@ def s2ctx_fold_merge(acc: s2ctx, l: fnlist[s2ctx]) -> fnoptn[s2ctx]:
             acc = x.arg1
             rest = rest.arg2
         else:
-            return fnoptn()
+            return fnoptn_nil()
 
     return fnoptn_cons(acc)
 

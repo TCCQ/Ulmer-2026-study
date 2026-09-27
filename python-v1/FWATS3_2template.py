@@ -8,7 +8,6 @@ Template resolution on level-2 static expressions.
 from abc import ABC
 from \
 dataclasses import dataclass
-from typing import Callable
 
 from FWATS3_2basics import (
     S2E000, S2Econ, S2Evar, S2Efun, S2Etupl,
@@ -48,13 +47,20 @@ def s2tmp_collect(e: d2ecl, ctx: s2ctx) -> fnoptn[s2ctx]:
 
 # does one step substitution, does NOT recursively expand
 def t2_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
+    """
+    Return the body of the implementation chosen for a template use, with the
+    argument types substituted, or fnoptn_nil if there is none. The context is
+    searched from the front, so the newest implementation is tried first; an
+    implementation that does not accept all the arguments is passed over in
+    favour of an older one. The body is not expanded any further.
+    """
     name = ""
     if isinstance(tuse.arg1, D2Ecst):
         name = tuse.arg1.arg1
     else:
         return fnoptn_nil()
     rest = ctx
-    while isinstance(rest, fnlist_cons):
+    while isinstance(rest, CTXcns):
         if rest.arg1 == name and isinstance(rest.arg2, D2Cimpl):
             tibody = rest.arg2.arg2
             # tivars = rest.arg2.arg3           # do we need this?
@@ -75,9 +81,9 @@ def t2_choose_impl(tuse: D2Etapp, ctx: s2ctx) -> fnoptn[d2exp]:
                         return fnoptn_nil()
                 else:
                     # conflicting substiutitions shouldn't happen, don't continue searching
-                    return fnoptn_nil()   
-            else:
-                return fnoptn_nil()
+                    return fnoptn_nil()
+            # else: not all arguments match, so keep searching for a timpl
+        rest = rest.arg3
     return fnoptn_nil()
 
 def t2_replace(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
@@ -163,7 +169,7 @@ def t2_replace(dexp: d2exp, ctx: s2ctx) -> fnoptn[d2exp]:
                 e2: d2exp
                 try:
                     e2 = f0_d2exp(rep.arg1)
-                    rep = fnoptn_cons(e2)
+                    return e2
                 except Exception as err:
                     print(f"Saw {err} when resolveing {dexp} in {ctx}")
                     raise TypeError(f"Can't resolve: {dexp} in {ctx}")
