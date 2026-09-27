@@ -11,7 +11,11 @@ dataclasses import dataclass
 
 from FWATS3_2basics import (
     S2E000, S2Econ, S2Evar, S2Efun, S2Etupl,
+    D2E000, D2Eint, D2Ebtf, D2Estr, D2Eop1, D2Eop2, D2Evar, D2Ecst,
+    D2Elam, D2Efix, D2Eapp, D2Eif0, D2Etupl, D2Eproj, D2Elets, D2Etapp,
+    D2Cbind, D2Cimpl, D2Clocal,
     strn, s2exp, d2ecl, s2explst, fnlist, fnlist_cons, fnlist_nil,
+    d2exp, d2expopt, d2explst, d2eclist,
     fnoptn, fnoptn_cons, fnoptn_nil,
 )
 
@@ -268,10 +272,121 @@ def s2ctx_merge(s2el: s2ctx, s2er: s2ctx) -> fnoptn[s2ctx]:
 ########################################################################
 
 def s2ctx_fold_merge(acc: s2ctx, l: fnlist[s2ctx]) -> fnoptn[s2ctx]:
-    while isinstance(l, fnlist_cons):
-        x = s2ctx_merge(acc, l.arg1)
+    rest = l
+    while isinstance(rest, fnlist_cons):
+        x = s2ctx_merge(acc, rest.arg1)
         if isinstance(x,fnoptn_cons):
             acc = x.arg1
+            rest = rest.arg2
         else:
             return fnoptn()
+
     return fnoptn_cons(acc)
+
+########################################################################
+
+def d2exp_subst(dexp: d2exp, ctx: s2ctx) -> d2exp:
+    """
+    Rebuild an expression, applying the context to every static expression
+    reachable from it: template argument types, implementation signatures,
+    and the annotations of the parameters bound by lambdas and functions.
+    Let expressions are walked, so their declarations are covered as well.
+    Inputs are unchanged, and new nodes are built for every constructor.
+    """
+    def f0_d2eclist(decls: d2eclist) -> d2eclist:
+        d2cs: list[d2ecl] = []
+        while isinstance(decls, fnlist_cons):
+            d2cs.append(f0_d2ecl(decls.arg1))
+            decls = decls.arg2
+        if not isinstance(decls, fnlist_nil):
+            raise TypeError(f"f0_d2eclist({decls})")
+        result: d2eclist = fnlist_nil()
+        for d2c in reversed(d2cs):
+            result = fnlist_cons(d2c, result)
+        return result
+
+    def f0_s2explst(s2el: s2explst) -> s2explst:
+        s2vs: list[s2exp] = []
+        while isinstance(s2el, fnlist_cons):
+            s2vs.append(s2exp_subst(s2el.arg1, ctx))
+            s2el = s2el.arg2
+        if not isinstance(s2el, fnlist_nil):
+            raise TypeError(f"f0_s2explst({s2el})")
+        result: s2explst = fnlist_nil()
+        for s2v in reversed(s2vs):
+            result = fnlist_cons(s2v, result)
+        return result
+
+    def f0_d2expopt(body: d2expopt) -> d2expopt:
+        if isinstance(body, fnoptn_cons):
+            return fnoptn_cons(f0_d2exp(body.arg1))
+        elif isinstance(body, fnoptn_nil):
+            return fnoptn_nil()
+        else:
+            raise TypeError(f"f0_d2expopt({body})")
+
+    def f0_d2explst(d2el: d2explst) -> d2explst:
+        d2vs: list[d2exp] = []
+        while isinstance(d2el, fnlist_cons):
+            d2vs.append(f0_d2exp(d2el.arg1))
+            d2el = d2el.arg2
+        if not isinstance(d2el, fnlist_nil):
+            raise TypeError(f"f0_d2explst({d2el})")
+        result: d2explst = fnlist_nil()
+        for d2v in reversed(d2vs):
+            result = fnlist_cons(d2v, result)
+        return result
+
+    def f0_d2ecl(decl: d2ecl) -> d2ecl:
+        if isinstance(decl, D2Cbind):
+            return D2Cbind(decl.arg1, f0_d2exp(decl.arg2))
+        elif isinstance(decl, D2Cimpl):
+            return D2Cimpl(decl.arg1, f0_d2exp(decl.arg2), decl.arg3,
+                           f0_s2explst(decl.arg4))
+        elif isinstance(decl, D2Clocal):
+            return D2Clocal(f0_d2eclist(decl.arg1), f0_d2eclist(decl.arg2))
+        else:
+            raise TypeError(f"d2exp_subst({decl})")
+
+    def f0_d2exp(dexp: d2exp) -> d2exp:
+        if False:
+            return D2E000()
+        elif isinstance(dexp, D2Eint):
+            return dexp
+        elif isinstance(dexp, D2Ebtf):
+            return dexp
+        elif isinstance(dexp, D2Estr):
+            return dexp
+        elif isinstance(dexp, D2Eop1):
+            return D2Eop1(dexp.name, f0_d2exp(dexp.arg1))
+        elif isinstance(dexp, D2Eop2):
+            return D2Eop2(dexp.name,
+                          f0_d2exp(dexp.arg1), f0_d2exp(dexp.arg2))
+        elif isinstance(dexp, D2Evar):
+            return dexp
+        elif isinstance(dexp, D2Ecst):
+            return dexp
+        elif isinstance(dexp, D2Elam):
+            return D2Elam(dexp.arg1, s2exp_subst(dexp.arg2, ctx),
+                          f0_d2exp(dexp.arg3))
+        elif isinstance(dexp, D2Efix):
+            return D2Efix(dexp.arg1, dexp.arg2, s2exp_subst(dexp.arg3, ctx),
+                          f0_d2exp(dexp.arg4), s2exp_subst(dexp.arg5, ctx))
+        elif isinstance(dexp, D2Eapp):
+            return D2Eapp(f0_d2exp(dexp.arg1), f0_d2exp(dexp.arg2))
+        elif isinstance(dexp, D2Eif0):
+            return D2Eif0(f0_d2exp(dexp.arg1),
+                          f0_d2exp(dexp.arg2), f0_d2exp(dexp.arg3))
+        elif isinstance(dexp, D2Etupl):
+            return D2Etupl(f0_d2explst(dexp.arg1))
+        elif isinstance(dexp, D2Eproj):
+            return D2Eproj(dexp.arg1, f0_d2exp(dexp.arg2))
+        elif isinstance(dexp, D2Elets):
+            return D2Elets(f0_d2eclist(dexp.arg1), f0_d2expopt(dexp.arg2))
+        elif isinstance(dexp, D2Etapp):
+            return D2Etapp(f0_d2exp(dexp.arg1), f0_s2explst(dexp.arg2))
+        elif type(dexp) is D2E000:
+            return dexp
+        raise TypeError(f"Unsupported level-2 expression: {type(dexp).__name__}")
+
+    return f0_d2exp(dexp)

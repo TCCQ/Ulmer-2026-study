@@ -61,17 +61,28 @@ class fnlist_cons[T](fnlist[T]):
 def sequence[T](s: fnlist[fnoptn[T]]) -> fnoptn[fnlist[T]]:
     rest = s
     out1: fnlist[T] = fnlist_nil()
-    while isinstance(s, fnlist_cons):
-        if isinstance(s.arg1, fnoptn_cons):
-            out1 = fnlist_cons(s.arg1.arg1, out1)
+    while isinstance(rest, fnlist_cons):
+        if isinstance(rest.arg1, fnoptn_cons):
+            out1 = fnlist_cons(rest.arg1.arg1, out1)
         else:
             return fnoptn_nil()
-        rest = s.arg2
+        rest = rest.arg2
     out2: fnlist[T] = fnlist_nil()
     while isinstance(out1, fnlist_cons):
         out2 = fnlist_cons(out1.arg1, out2)
         out1 = out1.arg2
     return fnoptn_cons(out2)
+
+def fnlist_zipWith2[T, U, V](s2el: fnlist[T], s2er: fnlist[U],
+                             f2: Callable[[T, U], V]) -> fnlist[V]:
+    if isinstance(s2el, fnlist_cons):
+        if isinstance(s2er, fnlist_cons):
+            return fnlist_cons(f2(s2el.arg1, s2er.arg1),
+                               fnlist_zipWith2(s2el.arg2, s2er.arg2, f2))
+        else:
+            return fnlist_nil()
+    else:
+        return fnlist_nil()
 ########################################################################
 ########################################################################
 @dataclass
