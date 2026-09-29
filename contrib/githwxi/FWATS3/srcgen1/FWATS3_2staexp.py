@@ -5,38 +5,13 @@ Structural operations on level-2 static expressions.
 """
 ########################################################################
 
-from abc import ABC
-from \
-dataclasses import dataclass
-
 from FWATS3_2basics import (
     S2E000, S2Econ, S2Evar, S2Efun, S2Etupl,
-    strn, s2exp, s2explst, fnlist_cons, fnlist_nil,
+    CTXnil, CTXcns, s2ctx,
+    s2exp, s2explst, fnlist_cons, fnlist_nil,
     fnoptn, fnoptn_cons, fnoptn_nil,
 )
 
-########################################################################
-@dataclass\
-(frozen=True)
-class CTX000(ABC):
-    ctag = "CTX000"
-    pass
-type s2ctx = CTX000
-########################################################################
-#
-@dataclass\
-(frozen=True)
-class CTXnil(CTX000):
-    pass
-#
-@dataclass\
-(frozen=True)
-class CTXcns(CTX000):
-    arg1: strn
-    arg2: s2exp
-    arg3: s2ctx
-    ctag = "CTXcns"
-#
 ########################################################################
 
 def s2exp_equal(s2el: s2exp, s2er: s2exp) -> bool:

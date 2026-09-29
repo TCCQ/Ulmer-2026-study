@@ -1,6 +1,7 @@
 # Level-2 Python implementation
 
-`FWATS3_2basics.py` defines the syntax and linked-list/option types.
+`FWATS3_2basics.py` defines the syntax, linked-list/option types, and matching
+context types (`s2ctx`, `CTX000`, `CTXnil`, and `CTXcns`).
 `FWATS3_2staexp.py` provides `s2exp_equal(left, right)` for structural
 type equality: constructor kinds and names must match, variables compare by
 name, and function and tuple components and constructor arguments compare
