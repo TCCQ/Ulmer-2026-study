@@ -1,0 +1,17 @@
+module Test (main) where
+
+import Control.Monad (unless)
+import System.Exit (exitFailure)
+
+import Test.Harness
+import qualified Test.Interp00
+import qualified Test.Interp01
+
+main :: IO ()
+main = do
+  putStrLn "FWATS3 level-2 interpreter tests"
+  passed <- mapM (uncurry runSuite)
+    [ ("interp00", Test.Interp00.tests)
+    , ("interp01", Test.Interp01.tests)
+    ]
+  unless (and passed) exitFailure
