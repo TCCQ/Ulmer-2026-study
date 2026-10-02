@@ -27,3 +27,18 @@ executable fwats
                     , containers >= 0.6.0
     hs-source-dirs:   app
     default-language: Haskell2010
+
+executable fwats-test
+    import:           warnings
+    main-is:          TestMain.hs
+    other-modules:    Ast
+                    , Interpret
+                    , Test
+                    , Test.Harness
+                    , Test.Interp00
+                    , Test.Interp01
+    other-extensions: FlexibleContexts
+    build-depends:    base ^>=4.18.3.0
+                    , containers >= 0.6.0
+    hs-source-dirs:   app
+    default-language: Haskell2010
