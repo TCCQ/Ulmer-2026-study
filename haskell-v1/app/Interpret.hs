@@ -29,7 +29,6 @@ d2expEvaluate dexp denv = case dexp of
   DVar n -> case lookup n denv of
     Just v -> pure v
     Nothing -> gErr $ "Unbound variable " ++ n
-  DCst t -> gErr $ "Template constant " ++ t ++ " cannot be interpreted"
   DLam nt body -> pure (DValLam denv nt body)
   DFix nSelf nt body ot -> pure (DValFix denv nSelf nt body ot)
   DApp f a -> d2expApp denv f a
@@ -116,7 +115,7 @@ d2eclEvaluate decl denv = case decl of
     denvHead <- d2eclistEvaluate declsImpl denv
     denvBody <- d2eclistEvaluate declsBind denvHead
     pure (take (length denvBody - length denvHead) denvBody ++ denv)
-  DImpl t _ _ _ ->
+  DImpl t _ _ ->
     gErr $ "Template implementation " ++ t ++ " cannot be interpreted"
 
 d2eclistEvaluate :: [DDecl] -> DEnv -> M DEnv
