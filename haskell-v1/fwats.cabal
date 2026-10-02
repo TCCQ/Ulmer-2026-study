@@ -1,0 +1,29 @@
+cabal-version:      3.0
+name:               fwats
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Thomas Ulmer
+maintainer:         thomasmulmer02@gmail.com
+-- copyright:
+category:           Language
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall -Wno-name-shadowing -Werror=unused-matches
+
+executable fwats
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    Ast
+                    , Interpret
+                    , Template
+    other-extensions: FlexibleContexts
+    build-depends:    base ^>=4.18.3.0
+                    , containers >= 0.6.0
+    hs-source-dirs:   app
+    default-language: Haskell2010
