@@ -97,11 +97,10 @@ sMatch l r = gErr $ "Can't match " ++ show l ++ " with " ++ show r
 recursively.
 -}
 sSubst :: SExp -> SCtx -> M SExp
-sSubst (SVar n) (SCtx sctx _) =
+sSubst v@(SVar n) (SCtx sctx _) =
   case M.lookup n sctx of
     Just s -> pure s
-    Nothing ->
-      gErr $ "Couldn't find " ++ n ++ " during substitution"
+    Nothing -> pure v
 sSubst (SCon n ss) ctx = do
   ss' <- mapM (\s -> sSubst s ctx) ss
   pure (SCon n ss')

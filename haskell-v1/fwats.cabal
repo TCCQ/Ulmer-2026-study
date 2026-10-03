@@ -33,10 +33,14 @@ executable fwats-test
     main-is:          TestMain.hs
     other-modules:    Ast
                     , Interpret
+                    , Template
                     , Test
                     , Test.Harness
                     , Test.Interp00
                     , Test.Interp01
+                    , Test.Template.Helpers
+                    , Test.Template00
+                    , Test.Template01
     other-extensions: FlexibleContexts
     build-depends:    base ^>=4.18.3.0
                     , containers >= 0.6.0
