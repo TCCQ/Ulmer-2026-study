@@ -1,0 +1,10 @@
+fact = fix (self, n : Int)
+        if n <= 1
+        then 1
+        else n * (self(n - 1))
+        end
+        : Int -> Int ;
+
+double = lam (n : Int) n + n ;
+
+fact(5) + double(fact(4))

@@ -64,6 +64,19 @@ insertImpl n b args (SCtx sctx tctx) = do
 class Expandable d where
   templateExpand :: d -> SCtx -> M d
 
+instance Expandable DProgram where
+  templateExpand (DProgram ds body) ctx = do
+    let addImpl (DImpl n b args) acc = acc >>= insertImpl n b args
+    -- top level binds / impls are recursive
+    ctx' <- foldr addImpl (pure ctx) [d | d@(DImpl _ _ _) <- ds]
+    -- TODO this should be consistent with the handling elsewhere?
+    -- Maybe only those marked local are recursive? Or add localr as a
+    -- variant?
+    ds' <- mapM (flip templateExpand ctx') ds
+    body' <- templateExpand body ctx'
+    pure (DProgram ds' body')
+
+
 instance Expandable DDecl where
   templateExpand (DBind n e) ctx = DBind n <$> templateExpand e ctx
   templateExpand (DImpl n b args) ctx = do
