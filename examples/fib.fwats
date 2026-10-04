@@ -1,0 +1,8 @@
+fib = fix (self, n : Int)
+        if n <= 1
+        then 1
+        else (self(n - 1)) + (self(n - 2))
+        end
+        : Int -> Int ;
+
+fib(10)
