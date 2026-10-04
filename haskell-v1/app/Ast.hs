@@ -24,6 +24,7 @@ data SCtx =
 substAtom :: SName -> SExp -> SCtx
 substAtom n r = SCtx (M.singleton n r) M.empty
 
+-- TODO consider better naming or splitting subst from impl tracking?
 substEmpty :: SCtx
 substEmpty = SCtx M.empty M.empty
 
@@ -52,10 +53,15 @@ data DDecl
 
 data DProgram
   = DProgram [DDecl] DExp
+  deriving (Show, Eq)
 
 data Error
   = ErrorGeneric String
   | ErrorContext Error String
+
+instance Show Error where
+  show (ErrorGeneric e) = e
+  show (ErrorContext e s) = show e ++ '\n':s
 
 type M a = Either Error a
 
