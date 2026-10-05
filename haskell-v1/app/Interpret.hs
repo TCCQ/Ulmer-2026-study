@@ -115,8 +115,10 @@ d2eclEvaluate decl denv = case decl of
     denvHead <- d2eclistEvaluate declsImpl denv
     denvBody <- d2eclistEvaluate declsBind denvHead
     pure (take (length denvBody - length denvHead) denvBody ++ denv)
-  DImpl t _ _ ->
-    gErr $ "Template implementation " ++ t ++ " cannot be interpreted"
+  t@(DTDec _) ->
+    gErr $ "Template Decl " ++ show t ++ " cannot be interpreted"
+  t@(DImpl _) ->
+    gErr $ "Template implementation " ++ show t ++ " cannot be interpreted"
 
 d2eclistEvaluate :: [DDecl] -> DEnv -> M DEnv
 d2eclistEvaluate [] denv = pure denv

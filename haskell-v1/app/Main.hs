@@ -46,11 +46,11 @@ main = do
   when (verbose flags) $
     putStrLn $ "Parsed:\n" ++ show program
   (DProgram eBinds eBody) <-
-    case templateExpand program substEmpty of
+    case runM (templateExpand program) of
       Left err -> (putStrLn ("Template Error:\n" ++ show err)) >>
         error (show err)
       Right e -> pure e
-  v <- case d2expLet [] eBinds (Just eBody) of
+  v <- case runM (d2expLet [] eBinds (Just eBody)) of
     Left err -> (putStrLn ("Interpret Error:\n" ++ show err)) >>
        error (show err)
     Right v -> pure v
