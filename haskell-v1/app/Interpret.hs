@@ -1,6 +1,10 @@
 module Interpret where
 
+import Prelude hiding ((<>))
+
 import Ast
+
+import Text.PrettyPrint
 
 data DVal
   = DValInt Int
@@ -12,6 +16,19 @@ data DVal
   deriving (Show, Eq)
 
 type DEnv = [(DName, DVal)]
+
+instance Pretty DVal where
+  pp (DValInt i) = int i
+  pp (DValBtf b) = if b then text "true" else text "false"
+  pp (DValStr s) = text s
+  pp (DValTupl vs) = parens $ sep $ punctuate comma $ pp <$> vs
+  pp (DValLam _ (a, at) b) =
+    let line1 = text "lam" <+> parens ((pp a) <+> char ':' <+> pp at)
+    in hang line1 2 (pp b)
+  pp (DValFix _ nSelf (a, at) b ot) =
+    let line1 = text "fix" <+> parens (pp nSelf <> comma <+> pp a <+> char ':' <+> pp at)
+        line2 = pp b
+    in hang (hang line1 4 line2) 2 (char ':' <+> pp ot)
 
 dValNil :: DVal
 dValNil = DValTupl []

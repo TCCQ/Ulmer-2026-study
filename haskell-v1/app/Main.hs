@@ -3,6 +3,7 @@ module Main where
 import System.Environment
 import Data.List (foldl', isPrefixOf, partition)
 import Control.Monad (when)
+import Text.PrettyPrint (render)
 
 import Ast
 import Interpret
@@ -44,14 +45,17 @@ main = do
     Left e -> error $ show e
     Right p -> pure $ p
   when (verbose flags) $
-    putStrLn $ "Parsed:\n" ++ show program
-  (DProgram eBinds eBody) <-
+    putStrLn $ "Parsed:\n" ++ (render $ pp program)
+  te@(DProgram eBinds eBody) <-
     case runM (templateExpand program) of
       Left err -> (putStrLn ("Template Error:\n" ++ show err)) >>
         error (show err)
       Right e -> pure e
-  v <- case runM (d2expLet [] eBinds (Just eBody)) of
-    Left err -> (putStrLn ("Interpret Error:\n" ++ show err)) >>
-       error (show err)
-    Right v -> pure v
-  putStrLn $ "Produced Value:\n" ++ show v
+  when (verbose flags) $
+    putStrLn $ "\nTemplates expanded:\n" ++ (render $ pp te)
+  when (not $ onlyExpand flags) $ do
+    v <- case runM (d2expLet [] eBinds (Just eBody)) of
+      Left err -> (putStrLn ("Interpret Error:\n" ++ show err)) >>
+         error (show err)
+      Right v -> pure v
+    putStrLn $ "\nProduced Value:\n" ++ (render $ pp v)

@@ -95,7 +95,7 @@ tests =
 
   , testCase "unsupported declarations raise" $
       assertLeft "template implementation" $
-        d2eclEvaluate (DImpl "f" (DInt 1) []) []
+        d2eclEvaluate (DImpl (TImpl ("f", (DInt 1), [], (SCon "Int" []), 0))) []
 
   , testCase "string literals preserve contents" $
       mapM_ (\s -> assertValue ("literal " ++ show s) (DValStr s) $

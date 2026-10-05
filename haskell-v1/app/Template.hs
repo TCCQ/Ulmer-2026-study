@@ -122,5 +122,12 @@ instance Expandable DProgram where
   templateExpand (DProgram [] body) = DProgram [] <$> templateExpand body
   templateExpand (DProgram (a:as) body) = do
     a' <- templateExpand a
-    (DProgram as' body') <- templateExpand (DProgram as body)
-    pure $ DProgram (a':as') body'
+    (DProgram as' body') <- insertDecl a' $ templateExpand (DProgram as body)
+    let binds = [x | Just x <- runtimeDecl <$> (a':as')]
+    pure $ DProgram binds body'
+
+runtimeDecl :: DDecl -> Maybe DDecl
+runtimeDecl x@(DBind _ _) = Just x
+runtimeDecl x@(DLocal _ _) = Just x
+runtimeDecl (DTDec _) = Nothing
+runtimeDecl (DImpl _) = Nothing
