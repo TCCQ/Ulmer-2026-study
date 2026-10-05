@@ -6,6 +6,7 @@ import System.Exit (exitFailure)
 import Test.Harness
 import qualified Test.Interp00
 import qualified Test.Interp01
+import qualified Test.Template
 
 main :: IO ()
 main = do
@@ -13,5 +14,6 @@ main = do
   passed <- mapM (uncurry runSuite)
     [ ("interp00", Test.Interp00.tests)
     , ("interp01", Test.Interp01.tests)
+    , ("template", Test.Template.tests)
     ]
   unless (and passed) exitFailure
