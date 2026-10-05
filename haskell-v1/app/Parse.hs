@@ -271,12 +271,14 @@ parseType = do
 -- read by 'implHead'.
 parseImpl :: Stream s m Char
           => (DName, [SName], [SExp]) -> ParsecT s u m DDecl
-parseImpl (n, frees, pats)
+parseImpl {- (n, frees, pats) -} _
   -- 'DImpl' holds one paired list, so a declaration that names a different
   -- number of variables and patterns has no representation here.  Say so rather
   -- than dropping the difference.  An implementation with no free type
   -- variables is written with a name for each pattern anyway; the name is inert,
   -- since an implementation is resolved by position rather than by name.
+ = error $ "TODO"
+{-
   | length frees /= length pats =
       fail $ "An implementation needs one variable per type pattern, got " ++
              show (length frees) ++ " and " ++ show (length pats)
@@ -284,6 +286,7 @@ parseImpl (n, frees, pats)
       pun "="
       body <- parseExpr
       pure $ DImpl n body (zip frees pats)
+-}
 
 -- | Everything in an implementation declaration up to the @=@, read behind a
 -- 'try' by 'parseDecl' so that a binding named @impl@ is still a binding.  The
