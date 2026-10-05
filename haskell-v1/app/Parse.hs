@@ -29,7 +29,6 @@ module Parse where
 import Control.Monad (void)
 import Data.Char (digitToInt, isAlphaNum)
 import Data.Functor.Identity (Identity)
-import Data.List (nub)
 import Data.Maybe (catMaybes)
 
 import Text.Parsec
@@ -48,17 +47,6 @@ type PState = Int
 
 -- | A parser, polymorphic in the character stream as the worked example is.
 type P s a = ParsecT s PState Identity a
-
-{- | Report a problem that is not a syntax error.
-
-There is no 'Error' to raise: the underlying monad is 'Identity', so a failure
-can only be a 'ParseError', and the one constructor that carries text through
-unchanged, 'Message', can only be built and not thrown, because 'parserFailure'
-is not exported.  So this is 'parserFail', whose message arrives wrapped in
-@ErrorFail@ -- positioned, which is the part that matters, but not plain.
--}
-perr :: String -> P s a
-perr = parserFail
 
 -- | The next implementation tag, taken from the parser's state.  Tags only have
 -- to be distinct, so nothing is reclaimed when a parse fails.
@@ -425,8 +413,8 @@ Each alternative is wrapped in 'try' just far enough that a name which is not a
 declaration leaves the input untouched -- so that @local@, @impl@ or @tdecl@ can
 be a binding, and so that a list of declarations ends at the first thing that is
 not one.  For @impl@ and @tdecl@ the 'try' covers only the head and the rest runs
-outside it, so that a mistake in a body, a result type or a list of quantified
-variables is reported where it happened instead of being rolled back.
+outside it, so that a mistake in a body or a result type is reported where it
+happened instead of being rolled back.
 -}
 parseDecl :: Stream s Identity Char => P s DDecl
 parseDecl =
