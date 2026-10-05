@@ -1,0 +1,18 @@
+tdecl multiply<'a> ('a, 'a) -> 'a ;
+
+intMul = lam (p : (Int, Int)) p.0 * p.1 ;
+
+impl multiply<Int> intMul : (Int, Int) -> Int ;
+
+tdecl exp<'a> ('a, 'a) -> 'a ;
+
+intExp = fix (self, p : (Int, Int))
+       if p.1 > 1
+       then self((p.0, (p.1 - 1))) * p.0
+       else 1
+       end : (Int, Int) -> Int ;
+
+impl exp<Int> intExp : (Int, Int) -> Int ;
+
+exp<Int>(4,2)
+

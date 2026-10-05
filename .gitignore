@@ -1,5 +1,7 @@
 TAGS
 tags
 *~
+*.o
+*.hi
 __pycache__
 dist-newstyle
