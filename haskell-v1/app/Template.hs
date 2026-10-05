@@ -8,19 +8,24 @@ import qualified Data.Map.Lazy as M
 
 import Ast
 
-chooseImpl :: TName -> [SExp] -> SCtx -> M DExp
-chooseImpl n args ctx@(SCtx _ tctx) = do
-  impls <- case M.lookup n tctx of
-    Nothing -> gErr $ "Didn't find any implementation for " ++ show n
-    Just y -> pure $ y
-  let applySuitable :: DDecl -> M (Maybe DExp)
-      applySuitable (DImpl n' body sBinds)
+blacklist :: Int -> M a -> M a
+blacklist tag act = extend (\(a,b,bl) -> (a,b,tag:bl)) act
+
+chooseImpl :: TName -> [SExp] -> M (DExp, Int)
+chooseImpl n args = do
+  tctx <- gets (\(_,x,_) -> x)
+  (impls, (TDecl (_,snames,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
+    (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
+    (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
+    (Just y, Just d) -> pure $ (y, d)
+  let applySuitable :: TImpl -> M (Maybe (DExp, Int))
+      applySuitable (TImpl (n', body, sBinds, _, tag))
         | n == n' = do
-            let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, SCtx))
+            let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, Subst))
                 helper useArg (vName, implArg) = do
                   maybeSubst <- sMatchMaybe implArg useArg -- ss from impl -> use if exists
                   pure ((\ms -> (vName,ms)) <$> maybeSubst)
-            maybeSubsts <- sequence <$> zipWithM helper args sBinds
+            maybeSubsts <- sequence <$> zipWithM helper args (zip snames sBinds)
             case maybeSubsts of
               Nothing -> pure Nothing
               Just substs -> do
@@ -36,12 +41,11 @@ chooseImpl n args ctx@(SCtx _ tctx) = do
 
                 -- TODO implement blacklisting either with separate
                 -- map or by removing from the ctx before recursing
-                expanded <- extendMsg (templateExpand body' ctx) $ "in resolving template " ++ show n ++ " at " ++ show args
-                pure $ Just expanded
+                expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
+                  (templateExpand body')
+                pure $ Just (expanded, tag)
         | otherwise =
           gErr $ "Timpl context on " ++ show n ++ " points to impl with name " ++ show n'
-      applySuitable x =
-        gErr $ "Timpl context on " ++ show n ++ " points to non impl " ++ show x
   let thread acc impl = do
         acc' <- acc
         x <- applySuitable impl
@@ -51,78 +55,72 @@ chooseImpl n args ctx@(SCtx _ tctx) = do
     Nothing -> gErr $ "No matching impl for " ++ show n ++ " at " ++ show args ++ " in " ++ show tctx
     Just body -> pure body
 
-
-insertImpl :: TName -> DExp -> [(SName, SExp)] -> SCtx -> M SCtx
-insertImpl n b args (SCtx sctx tctx) = do
-  case M.lookup n sctx of
-    Nothing ->
-      let decl = DImpl n b args
-          tctx' = M.insertWith (++) n [decl] tctx
-      in pure $ SCtx sctx tctx'
-    Just _ -> gErr $ "Name " ++ show n ++ " appears in both tctx and sctx."
+insertDecl :: DDecl -> M a -> M a
+insertDecl (DTDec d@(TDecl (name, _, _))) act = do
+  let update (sc,x,bl) = (sc, x { declared = M.insert name d (declared x)}, bl)
+  extend update act
+insertDecl (DImpl d@(TImpl (name, _, _, _, _))) act = do
+  (s@(SCtx sctx), tctx, bl) <- get
+  ctx' <- case (M.lookup name sctx, M.lookup name (declared tctx)) of
+    (Nothing, Just _) ->
+      let impls' = M.insertWith (++) name [d] (impls tctx)
+      in pure (s, tctx { impls = impls' }, bl)
+    (Just _, _) -> gErr $ "Name " ++ show name ++ " appears in both tctx and sctx."
+    (_, Nothing) -> gErr $ "Name " ++ show name ++ " implemented but not declared"
+  extend (const ctx') act
+insertDecl _ act = act
 
 class Expandable d where
-  templateExpand :: d -> SCtx -> M d
-
-instance Expandable DProgram where
-  templateExpand (DProgram ds body) ctx = do
-    let addImpl (DImpl n b args) acc = acc >>= insertImpl n b args
-    -- top level binds / impls are recursive
-    ctx' <- foldr addImpl (pure ctx) [d | d@(DImpl _ _ _) <- ds]
-    -- TODO this should be consistent with the handling elsewhere?
-    -- Maybe only those marked local are recursive? Or add localr as a
-    -- variant?
-    ds' <- mapM (flip templateExpand ctx') ds
-    body' <- templateExpand body ctx'
-    pure (DProgram ds' body')
-
+  templateExpand :: d -> M d
 
 instance Expandable DDecl where
-  templateExpand (DBind n e) ctx = DBind n <$> templateExpand e ctx
-  templateExpand (DImpl n b args) ctx = do
+  templateExpand t@(DTDec _) = pure t
+  templateExpand (DBind n e) = DBind n <$> templateExpand e
+  templateExpand (DImpl (TImpl (n, b, args, ret, tag))) = do
     -- we don't include this impl when expanding the body
-    b' <- templateExpand b ctx
-    pure $ DImpl n b' args
-  templateExpand (DLocal ds bs) ctx = do
+    b' <- blacklist tag $ templateExpand b
+    pure $ DImpl (TImpl (n, b', args, ret, tag))
+  templateExpand (DLocal ds bs) = do
     -- not mutually recursive
-    ds' <- mapM (flip templateExpand ctx) ds
-    ctx' <- foldr (\(DImpl n b args) acc -> acc >>= insertImpl n b args ) (pure ctx) ds'
-    bs' <- mapM (flip templateExpand ctx') bs
+    ds' <- mapM templateExpand ds
+    bs' <- foldr insertDecl (mapM templateExpand bs) ds'
     pure $ DLocal ds' bs'
 
 instance Expandable DExp where
-  templateExpand (DInt i) _ = pure (DInt i)
-  templateExpand (DBool b) _ = pure (DBool b)
-  templateExpand (DStr s) _ = pure (DStr s)
-  templateExpand (DVar v) _ = pure (DVar v)
-  templateExpand (DOp1 n a) ctx = DOp1 n <$> templateExpand a ctx
-  templateExpand (DOp2 n a b) ctx =
-    DOp2 n <$> templateExpand a ctx <*> templateExpand b ctx
-  templateExpand (DLam nt b) ctx = DLam nt <$> templateExpand b ctx
-  templateExpand (DFix n nt b ot) ctx = do
-    b' <- templateExpand b ctx
+  templateExpand (DInt i) = pure (DInt i)
+  templateExpand (DBool b) = pure (DBool b)
+  templateExpand (DStr s) = pure (DStr s)
+  templateExpand (DVar v) = pure (DVar v)
+  templateExpand (DOp1 n a) = DOp1 n <$> templateExpand a
+  templateExpand (DOp2 n a b) =
+    DOp2 n <$> templateExpand a <*> templateExpand b
+  templateExpand (DLam nt b) = DLam nt <$> templateExpand b
+  templateExpand (DFix n nt b ot) = do
+    b' <- templateExpand b
     pure $ DFix n nt b' ot
-  templateExpand (DApp a b) ctx =
-    DApp <$> templateExpand a ctx <*> templateExpand b ctx
-  templateExpand (DIf c a b) ctx =
-    DIf <$> templateExpand c ctx
-         <*> templateExpand a ctx
-         <*> templateExpand b ctx
-  templateExpand (DTuple ss) ctx =
-    DTuple <$> mapM (flip templateExpand ctx) ss
-  templateExpand (DProj i a) ctx = DProj i <$> templateExpand a ctx
-  templateExpand (DLet ds body) ctx = do
+  templateExpand (DApp a b) =
+    DApp <$> templateExpand a <*> templateExpand b
+  templateExpand (DIf c a b) =
+    DIf <$> templateExpand c
+         <*> templateExpand a
+         <*> templateExpand b
+  templateExpand (DTuple ss) =
+    DTuple <$> mapM templateExpand ss
+  templateExpand (DProj i a) = DProj i <$> templateExpand a
+  templateExpand (DLet ds body) = do
     -- not mutually recursive: the arms are expanded in the caller's
     -- context, and only afterwards contribute their impls to it
-    ds' <- mapM (flip templateExpand ctx) ds
-    ctx' <- foldr
-      (\decl acc -> case decl of
-         DImpl n b args -> acc >>= insertImpl n b args
-         _ -> acc)
-      (pure ctx)
-      ds'
-    body' <- traverse (flip templateExpand ctx') body
+    ds' <- mapM templateExpand ds
+    let bodyAction = traverse templateExpand body
+    body' <- foldr insertDecl bodyAction ds'
     pure $ DLet ds' body'
-  templateExpand (DTapp n ts) ctx = do
-    resolved <- chooseImpl n ts ctx
-    templateExpand resolved ctx
+  templateExpand (DTapp n ts) = do
+    (resolved, tag) <- chooseImpl n ts
+    blacklist tag (templateExpand resolved)
+
+instance Expandable DProgram where
+  templateExpand (DProgram [] body) = DProgram [] <$> templateExpand body
+  templateExpand (DProgram (a:as) body) = do
+    a' <- templateExpand a
+    (DProgram as' body') <- templateExpand (DProgram as body)
+    pure $ DProgram (a':as') body'
