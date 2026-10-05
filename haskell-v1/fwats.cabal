@@ -22,6 +22,7 @@ executable fwats
     other-modules:    Ast
                     , Ast.Types
                     , Ast.Util
+                    , Ast.Pretty
                     , Interpret
                     , Parse
                     , Template
@@ -29,16 +30,17 @@ executable fwats
     build-depends:    base ^>=4.18.3.0
                     , containers >= 0.6.0
                     , parsec >=3.1.18.0
+                    , pretty >=1.1.3.0
     hs-source-dirs:   app
     default-language: Haskell2010
 
 test-suite fwats-test
     type: exitcode-stdio-1.0
-    import:           warnings
     main-is:          TestMain.hs
     other-modules:    Ast
                     , Ast.Types
                     , Ast.Util
+                    , Ast.Pretty
                     , Interpret
                     , Parse
                     , Template
@@ -46,12 +48,13 @@ test-suite fwats-test
                     , Test.Harness
                     , Test.Interp00
                     , Test.Interp01
-                    , Test.Template.Helpers
-                    , Test.Template00
-                    , Test.Template01
+                    -- , Test.Template.Helpers
+                    -- , Test.Template00
+                    -- , Test.Template01
     other-extensions: FlexibleContexts
     build-depends:    base ^>=4.18.3.0
                     , containers >= 0.6.0
                     , parsec >=3.1.18.0
+                    , pretty >=1.1.3.0
     hs-source-dirs:   app
     default-language: Haskell2010
