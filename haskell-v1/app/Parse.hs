@@ -487,7 +487,7 @@ dPostfix = do
 
 -- | An operand, with a unary minus desugaring to @DOp1 "-1"@.
 dUnary :: Stream s Identity Char => P s DExp
-dUnary = (DOp1 "-1" <$ sym "-" <*> dUnary) <|> dApply
+dUnary = (DOp1 "-" <$ sym "-" <*> dUnary) <|> dApply
 
 {- | A left-associative layer of binary operators.  Each operator is matched by
 'op', which either matches or consumes nothing, so a layer can be left without
