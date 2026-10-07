@@ -1,6 +1,7 @@
 module Main where
 
 import System.Environment
+import System.Exit
 import Data.List (foldl', isPrefixOf, partition)
 import Control.Monad (when)
 import Text.PrettyPrint (render)
@@ -9,6 +10,7 @@ import Ast
 import Interpret
 import Template
 import Parse
+import Typecheck
 
 data Flags = Flags
  { verbose :: Bool
@@ -46,13 +48,33 @@ main = do
     Right p -> pure $ p
   when (verbose flags) $
     putStrLn $ "Parsed:\n" ++ (render $ pp program)
-  te@(DProgram eBinds eBody) <-
-    case runM (templateExpand program) of
+
+
+  (_, tc) <-
+    case runTT (typecheck program) of
+      Left err -> (putStrLn ("Typechecking Error:\n" ++ show err)) >>
+        exitWith (ExitFailure 1)
+      Right e -> pure e
+  when (verbose flags) $
+    putStrLn $ "\nTypechecked:\n" ++ (render $ pp tc)
+
+  te <-
+    case runM (templateExpand tc) of
       Left err -> (putStrLn ("Template Error:\n" ++ show err)) >>
         error (show err)
       Right e -> pure e
   when (verbose flags) $
     putStrLn $ "\nTemplates expanded:\n" ++ (render $ pp te)
+
+  (_, tc2@(DProgram eBinds eBody)) <-
+    case runTT (typecheck te) of
+      Left err -> (putStrLn ("Typechecking Error:\n" ++ show err)) >>
+        exitWith (ExitFailure 1)
+      Right e -> pure e
+  when (verbose flags) $
+    putStrLn $ "\nTypechecked again:\n" ++ (render $ pp tc2)
+
+
   when (not $ onlyExpand flags) $ do
     v <- case runM (d2expLet [] eBinds (Just eBody)) of
       Left err -> (putStrLn ("Interpret Error:\n" ++ show err)) >>

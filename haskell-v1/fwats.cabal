@@ -26,6 +26,7 @@ executable fwats
                     , Interpret
                     , Parse
                     , Template
+                    , Typecheck
     other-extensions: FlexibleContexts
     build-depends:    base ^>=4.18.3.0
                     , containers >= 0.6.0
@@ -44,6 +45,7 @@ test-suite fwats-test
                     , Interpret
                     , Parse
                     , Template
+                    , Typecheck
                     , Test
                     , Test.Harness
                     , Test.Interp00
