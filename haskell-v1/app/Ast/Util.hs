@@ -2,8 +2,11 @@ module Ast.Util where
 
 import Ast.Types
 
-import qualified Data.Map.Lazy as M
 import Control.Monad (foldM)
+import Data.List (nub)
+
+import qualified Data.Map.Lazy as M
+
 
 substAtom :: SName -> SExp -> Subst
 substAtom n r = M.singleton n r
@@ -12,13 +15,13 @@ substAtom n r = M.singleton n r
 substEmpty :: Subst
 substEmpty = M.empty
 
-sMatchMaybe :: SExp -> SExp -> M (Maybe Subst)
+sMatchMaybe :: SExp -> SExp -> TM s r (Maybe Subst)
 sMatchMaybe l r = catch (sMatch l r) Just Nothing
 
 {- | Try to unify the left with the right, producing a new context
 binding left vars to right exprs on success.
 -}
-sMatch :: SExp -> SExp -> M Subst
+sMatch :: SExp -> SExp -> TM s r Subst
 sMatch (SVar lv) r =
   pure $ substAtom lv r
 sMatch l@(SCon ln las) r@(SCon rn ras)
@@ -38,7 +41,7 @@ sMatch l r = gErr $ "Can't match " ++ show l ++ " with " ++ show r
 {- | Perform the substiution of variables to sexprs indicated by ctx
 recursively.
 -}
-sSubst :: SExp -> Subst -> M SExp
+sSubst :: SExp -> Subst -> TM s r SExp
 sSubst v@(SVar n) sctx =
   case M.lookup n sctx of
     Just s -> pure s
@@ -55,7 +58,7 @@ sSubst (STuple ss) ctx =
 
 {- | Combine two contexts or substitutions. They must agree exactly at
 every overlap. -}
-sMerge :: Subst -> Subst -> M Subst
+sMerge :: Subst -> Subst -> TM s r Subst
 sMerge ls rs = do
   let sint = M.intersectionWith (\a b -> (a,b)) ls rs
   let agree = foldr (\(a,b) acc -> acc && a == b) True sint
@@ -74,7 +77,7 @@ sMerge ls rs = do
 {- | Perform subsitution recursively by walking the dexp and applying to
    the contained sexps.
 -}
-sSubstD :: DExp -> Subst -> M DExp
+sSubstD :: DExp -> Subst -> TM s r DExp
 sSubstD (DLam (n,t) b) ctx = do
   t' <- sSubst t ctx
   b' <- sSubstD b ctx
@@ -94,3 +97,10 @@ sSubstD (DTapp n ts) ctx = do
   ts' <- mapM (flip sSubst ctx) ts
   pure $ DTapp n ts'
 sSubstD e _ = pure e
+
+
+freeS :: SExp -> [SName]
+freeS (SCon _ as) = nub $ as >>= freeS
+freeS (SVar n) = [n]
+freeS (SFun l r) = nub $ freeS l ++ freeS r
+freeS (STuple as) = nub $ as >>= freeS
