@@ -51,12 +51,22 @@ instance Pretty DExp where
       (maybe empty pp body)
   pp (DTapp n args) = pp n <> char '<' <> sep (punctuate comma $ pp <$> args) <> char '>'
 
+instance Pretty TDecl where
+  pp (TDecl (n, as, r)) =
+    text "tdecl" <+> pp n <> char '<' <> (sep $ punctuate comma $ (\x -> char '\'' <> pp x) <$> as) <> char '>' <+> pp r
+
+instance Pretty TImpl where
+  pp (TImpl (n, body, binds, ty, tag)) =
+    text "impl" <+> braces (int tag) <+> pp n <> char '<' <> (sep $ punctuate comma $ pp <$> binds) <> char '>' <+> pp body <+> char ':' <+> pp ty
+
 instance Pretty DDecl where
   pp (DBind n b) = pp n <+> char '=' <+> pp b
-  pp (DTDec (TDecl (n, as, r))) = text "tdecl" <+> pp n <> char '<' <> (sep $ punctuate comma $ (\x -> char '\'' <> pp x) <$> as) <> char '>' <+> pp r
-  pp (DImpl (TImpl (n, body, binds, ty, tag))) =
-    text "impl" <+> braces (int tag) <+> pp n <> char '<' <> (sep $ punctuate comma $ pp <$> binds) <> char '>' <+> pp body <+> char ':' <+> pp ty
-  pp (DLocal _ _) = error "TODO pp dlocal"
+  pp (DTDec t) = pp t
+  pp (DImpl t) = pp t
+  pp (DLocal bs ds) =
+    hang (text "local") 2 (vcat $ punctuate semi (map pp bs)) $+$
+    hang (text "in") 2 ((vcat $ punctuate semi (map pp ds))) $+$
+    text "end"
 
 instance Pretty DProgram where
   pp (DProgram binds body) = (sep (punctuate semi $ pp <$> binds) <> semi) $+$ pp body
