@@ -52,7 +52,7 @@ swapImpl = timpl "swap" (DTuple [DProj 1 (DVar "p"), DProj 0 (DVar "p")])
 
 -- | inc@Nat := n + 1, which captures n.
 incImpl :: DDecl
-incImpl = timpl "inc" (DOp1 "+1" (DVar "n")) [con "Nat"] (con "Nat") 4
+incImpl = timpl "inc" (DOp2 "+" (DVar "n") (DInt 1)) [con "Nat"] (con "Nat") 4
 
 -- | inc2@a := inc@a, which uses another template.
 inc2Impl :: DDecl
@@ -259,7 +259,7 @@ tests =
       result <- resolved use tctx
       assertEqual "no template uses are left" [] (templateUses result)
       assertEqual "inc2 expands through inc"
-        (DApp (DOp1 "+1" (DVar "n")) (DVar "n")) result
+        (DApp (DOp2 "+" (DVar "n") (DInt 1)) (DVar "n")) result
 
   , testCase "an implementation declared in a let reaches its own body" $ do
       let nat = con "Nat"
@@ -267,7 +267,7 @@ tests =
           -- in inc<Nat>(1) end
           program = DLet
             [ DTDec (TDecl ("inc", ["a"], nat))
-            , DImpl (TImpl ("inc", (DOp1 "+1" (DVar "n")), [nat], nat, 12))
+            , DImpl (TImpl ("inc", (DOp2 "+" (DVar "n") (DInt 1)), [nat], nat, 12))
             ]
             (Just (DApp (DTapp "inc" [nat]) (DInt 1)))
       result <- unwrap "expanding the let" (templateExpand program)

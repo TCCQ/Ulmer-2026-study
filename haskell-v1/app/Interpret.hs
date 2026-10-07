@@ -61,8 +61,7 @@ d2expOp1 denv n a = do
   va <- d2expEvaluate a denv
   case va of
     DValInt i -> case n of
-      "+1" -> pure (DValInt (i + 1))
-      "-1" -> pure (DValInt (i - 1))
+      "-" -> pure (DValInt (i * (-1)))
       _ -> gErr $ "Unknown unary operator " ++ n
     _ -> gErr $ "Operator " ++ n ++ " expects an integer argument"
 
