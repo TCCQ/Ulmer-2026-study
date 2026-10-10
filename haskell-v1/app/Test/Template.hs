@@ -100,6 +100,21 @@ factImpl = timpl "fact"
      (SFun (SVar "a") (SVar "a")))
   [SVar "a"] (SFun (SVar "a") (SVar "a")) 11
 
+selfImpl :: DDecl
+selfImpl = timpl "self" (DTapp "self" [con "Nat"]) [con "Nat"] (con "Nat") 20
+
+selfBase :: DDecl
+selfBase = timpl "self" (DInt 1) [con "Nat"] (con "Nat") 19
+
+innerA :: DDecl
+innerA = timpl "inner" (DInt 1) [con "Nat"] (con "Nat") 30
+
+innerB :: DDecl
+innerB = timpl "inner" (DInt 2) [con "Nat"] (con "Nat") 31
+
+outerUse :: DDecl
+outerUse = timpl "outer" (DTapp "inner" [con "Nat"]) [con "Nat"] (con "Nat") 32
+
 factorial :: Int -> Int
 factorial n = product [1 .. n]
 
@@ -322,4 +337,23 @@ tests =
           , "impl twice<Nat> inc : Nat -> Nat ;"
           , "twice<Nat>(20)"
           ]
+  , testCase "a self-recursive implementation is blocked by the blacklist" $ do
+      tctx <- implCtx [selfImpl]
+      assertLeft "expanding the self use fails" $
+        withCtx tctx (templateExpand (DTapp "self" [con "Nat"]))
+
+  , testCase "the blacklist only blocks the implementation that was chosen" $ do
+      tctx <- implCtx [selfBase, selfImpl]
+      assertEqual "the older implementation fills the recursive use" (DInt 1)
+        =<< resolved (DTapp "self" [con "Nat"]) tctx
+
+  , testCase "recursive expansion uses the implementations at the use site" $ do
+      tctx <- implCtx [innerA, outerUse]
+      assertEqual "the definition context is used when nothing overrides it"
+        (DInt 1)
+        =<< resolved (DTapp "outer" [con "Nat"]) tctx
+      let program = DLet [innerB] (Just (DTapp "outer" [con "Nat"]))
+      assertEqual "the use-site implementation is chosen"
+        (DLet [innerB] (Just (DInt 2)))
+        =<< resolved program tctx
   ]
