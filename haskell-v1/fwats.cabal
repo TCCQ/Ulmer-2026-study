@@ -51,6 +51,7 @@ test-suite fwats-test
                     , Test.Interp00
                     , Test.Interp01
                     , Test.Template
+                    , Test.Typecheck
     other-extensions: FlexibleContexts
     build-depends:    base ^>=4.18.3.0
                     , containers >= 0.6.0

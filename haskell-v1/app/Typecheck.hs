@@ -127,15 +127,16 @@ instance TypeCheck DExp where
                   gErr $ "Projection larger than tuple length\n" ++ (render $ pp e)
                 | otherwise -> pure (ss !! i, DProj i b')
       _ -> gErr $ "Project on non tuple type\n" ++ (render $ pp e)
-  typecheck   (DLet binds mbody) = do
-    tbs' <- mapM typecheck binds
+  typecheck   (DLet [] mbody) = do
     let helper b = do
           (bt, b') <- typecheck b
           pure (bt, Just b')
-    let helper2 (t,d) act = insertDecl (t, d) act
-    let bodyAction = maybe (pure (unitType, Nothing)) helper mbody
-    (bt, mbody') <- foldr helper2 bodyAction tbs'
-    pure (bt, DLet [r | (_,r) <- tbs'] mbody')
+    (bt, mbody') <- maybe (pure (unitType, Nothing)) helper mbody
+    pure (bt, DLet [] mbody')
+  typecheck   (DLet (b:rs) mbody) = do
+    (t,b') <- typecheck b
+    (rt, (DLet rs' mbody')) <- insertDecl (t,b') $ typecheck (DLet rs mbody)
+    pure (rt, DLet (b':rs') mbody')
   typecheck e@(DTapp n sas) = do
     -- don't resolve the actual impl here, just use shape
     tctx <- gets tCtx
