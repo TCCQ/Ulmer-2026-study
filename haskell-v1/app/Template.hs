@@ -13,14 +13,14 @@ blacklist tag act = extend (\(a,b,bl) -> (a,b,tag:bl)) act
 
 chooseImpl :: TName -> [SExp] -> M (DExp, Int)
 chooseImpl n args = do
-  tctx <- gets (\(_,x,_) -> x)
+  (tctx, blacklist) <- gets (\(_,x,bl) -> (x,bl))
   (impls, (TDecl (_,snames,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
     (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
   let applySuitable :: TImpl -> M (Maybe (DExp, Int))
       applySuitable (TImpl (n', body, sBinds, _, tag))
-        | n == n' = do
+        | n == n' && not (elem tag blacklist) = do
             let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, Subst))
                 helper useArg (vName, implArg) = do
                   maybeSubst <- sMatchMaybe implArg useArg -- ss from impl -> use if exists
@@ -39,11 +39,10 @@ chooseImpl n args = do
                 -- right now they are thrown in together, which I
                 -- think is correct but not super clear
 
-                -- TODO implement blacklisting either with separate
-                -- map or by removing from the ctx before recursing
                 expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
                   (templateExpand body')
                 pure $ Just (expanded, tag)
+        | n == n' = {- blacklisted -} pure Nothing
         | otherwise =
           gErr $ "Timpl context on " ++ show n ++ " points to impl with name " ++ show n'
   let thread acc impl = do
@@ -76,10 +75,11 @@ class Expandable d where
 instance Expandable DDecl where
   templateExpand t@(DTDec _) = pure t
   templateExpand (DBind n e) = DBind n <$> templateExpand e
-  templateExpand (DImpl (TImpl (n, b, args, ret, tag))) = do
+  templateExpand e@(DImpl (TImpl (_, _, _, _, _))) = do
     -- we don't include this impl when expanding the body
-    b' <- blacklist tag $ templateExpand b
-    pure $ DImpl (TImpl (n, b', args, ret, tag))
+    -- b' <- blacklist tag $ templateExpand b
+    -- pure $ DImpl (TImpl (n, b', args, ret, tag))
+    pure e --don't do any expansion eagerly
   templateExpand (DLocal ds bs) = do
     -- not mutually recursive
     ds' <- mapM templateExpand ds
