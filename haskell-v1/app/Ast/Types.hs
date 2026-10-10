@@ -95,6 +95,9 @@ instance Monad (TM s r) where
     (s'', y) <- runTM (f x') s' r
     Right (s'', y)
 
+instance MonadFail (TM s r) where
+  fail s = gErr s
+
 get :: TM s r r
 get = TM $ \s r -> Right (s,r)
 
