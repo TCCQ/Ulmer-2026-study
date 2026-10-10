@@ -13,14 +13,14 @@ blacklist tag act = extend (\(a,b,bl) -> (a,b,tag:bl)) act
 
 chooseImpl :: TName -> [SExp] -> M (DExp, Int)
 chooseImpl n args = do
-  (tctx, blacklist) <- gets (\(_,x,bl) -> (x,bl))
+  (tctx, bl) <- gets (\(_,x,bl) -> (x,bl))
   (impls, (TDecl (_,snames,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
     (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
   let applySuitable :: TImpl -> M (Maybe (DExp, Int))
       applySuitable (TImpl (n', body, sBinds, _, tag))
-        | n == n' && not (elem tag blacklist) = do
+        | n == n' && not (elem tag bl) = do
             let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, Subst))
                 helper useArg (vName, implArg) = do
                   maybeSubst <- sMatchMaybe implArg useArg -- ss from impl -> use if exists
@@ -40,7 +40,7 @@ chooseImpl n args = do
                 -- think is correct but not super clear
 
                 expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
-                  (templateExpand body')
+                  (blacklist tag $ templateExpand body')
                 pure $ Just (expanded, tag)
         | n == n' = {- blacklisted -} pure Nothing
         | otherwise =
@@ -114,9 +114,8 @@ instance Expandable DExp where
     let bodyAction = traverse templateExpand body
     body' <- foldr insertDecl bodyAction ds'
     pure $ DLet ds' body'
-  templateExpand (DTapp n ts) = do
-    (resolved, tag) <- chooseImpl n ts
-    blacklist tag (templateExpand resolved)
+  templateExpand (DTapp n ts) =
+    fst <$> chooseImpl n ts
 
 instance Expandable DProgram where
   templateExpand (DProgram [] body) = DProgram [] <$> templateExpand body
