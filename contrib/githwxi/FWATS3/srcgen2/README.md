@@ -14,7 +14,10 @@ template checking, matching, substitution, and two-environment closures.
 - `FWATS3_2interp.py` evaluates code with separate variable/template environments.
 - `FWATS3_2tcheck.py` checks expression types and template declarations/implementations.
 - `FWATS3_2parser.py` parses the concrete syntax described in `SYNTAX.md`.
-- `mylib/1.fwats3` contains sample constant declarations and implementations.
+- `mylib/1.fwats3` contains numeric template constants and implementations.
+- `mylib/list.fwats3` and `mylib/optn.fwats3` define list and option templates,
+including list_uncons for nonempty lists and payload-extracting optn_uncons.
+- `mylib/strm.fwats3` defines lazy streams and stream-constructor templates.
 
 ## Parse source
 
@@ -110,13 +113,23 @@ The implemented rules are:
   expose only the public region; exported functions can capture private names.
   Implementations of private signatures remain private.
 - Known constructors have checked arities (`sint`, `bool`, `string`: zero;
-  `list`, `optn`: one). Other constructors remain nominal and accept any
+  `list`, `strm`, `stcn`, `optn`: one). Other constructors remain nominal and accept any
   arity because the AST has no type-constructor declarations.
 
 Signature checking does not choose an implementation, require an implementation
 to exist at each call, or reject overlapping implementations. Dispatch,
 evaluation, termination, and runtime arithmetic errors remain separate concerns.
 Recursive checking is subject to Python's recursion limit.
+
+Polymorphic list and stream types use list(t) and strm(t); stcn(t) represents a
+stream constructor node. Each takes one type argument. In mylib/strm.fwats3,
+strm(t) is represented at runtime as a delayed unit function that produces
+stcn(t). The stcn_nil and stcn_cons templates build the forced nodes. The type
+checker treats a function of type () -> stcn(t) as strm(t), and stream application
+to unit produces stcn(t). Streams are not memoized: each force reevaluates the
+delayed computation. Parenthesized constructor arguments and the bracket form
+are equivalent. These types use S2Econ nodes, so substitution and matching
+need no new static AST variants.
 
 ## Interpretation
 
@@ -139,7 +152,8 @@ value = d2exp_evaluate(d2exp_parse("@f1_fibo[sint](10)"), denv, tenv)  # 55
 `libfile_evaluate` (also `d2eclist_evaluate`) returns new `(denv, tenv)`.
 `d2exp_evaluate` and `program_evaluate` return a runtime value. All accept
 optional existing environments. Values are Python integers, booleans, strings,
-tuples (including unit `()`), or `D2Vlam`/`D2Vfix` closure records.
+tuples (including unit `()`), `D2Vcon` constructor values, or
+`D2Vlam`/`D2Vfix` closure records.
 
 The two environments have distinct roles:
 
@@ -169,6 +183,13 @@ branch. Integer division uses Python floor division, and modulo uses Python
 remainder semantics. Runtime checks reject invalid operand types, non-functions,
 invalid projections, unbound names, and missing implementations with
 `FWATS3RuntimeError`. Division/modulo by zero also raises that exception.
+Constructed values have the form `D2Vcon(name, args)`, where `args` is an
+ordered `fnlist` of runtime values. `D2CON("list_nil")` and
+`D2CON("list_cons", head, tail)`, `D2CON("optn_nil")`, and
+`D2CON("optn_cons", value)` produce these values through `D2Eopx`;
+`D2TCK(value, tag)` checks the constructor and `D2ARG(value, index)` reads a
+field. The option templates in `mylib/optn.fwats3` provide constructors, tag
+queries, and payload extraction. `d2val_format` formats constructed values recursively.
 
 Type checking is explicit and separate from evaluation; run it first for source
 validation. The interpreter does not infer static arguments or perform

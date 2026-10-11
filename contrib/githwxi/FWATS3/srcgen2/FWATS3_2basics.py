@@ -161,6 +161,12 @@ class D2Eop2(D2E000):
     ctag = "D2Eop2"
 ########################################################################
 @dataclass
+class D2Eopx(D2E000):
+    name: strn
+    arg1: d2explst
+    ctag = "D2Eopx"
+########################################################################
+@dataclass
 class D2Evar(D2E000):
     arg1: d2var
     ctag = "D2Evar"

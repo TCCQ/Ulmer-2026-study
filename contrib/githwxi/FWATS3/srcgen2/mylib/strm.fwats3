@@ -1,0 +1,47 @@
+# stcn values are the stream constructors. A strm(a) is a delayed
+# unit-argument computation that produces an stcn(a). It is not memoized:
+# each force evaluates the delayed computation again.
+
+dec stcn_nil[a]: stcn(a);
+dec stcn_cons[a]: (a, strm(a)) -> stcn(a);
+dec stcn_head[a]: stcn(a) -> a;
+dec stcn_tail[a]: stcn(a) -> strm(a);
+dec stcn_uncons[a]: stcn(a) -> (a, strm(a));
+
+imp{a} stcn_nil[a] =
+  D2CON("stcn_nil");
+
+imp{a} stcn_cons[a] =
+  lam(xy: (a, strm(a))) => D2CON("stcn_cons", xy.0, xy.1);
+
+imp{a} stcn_head[a] =
+  lam(node: stcn(a)) => D2ARG(node, 0);
+
+imp{a} stcn_tail[a] =
+  lam(node: stcn(a)) => D2ARG(node, 1);
+
+imp{a} stcn_uncons[a] =
+  lam(node: stcn(a)) => (D2ARG(node, 0), D2ARG(node, 1));
+
+# Stream constructors delay their stcn node until the stream is forced.
+dec strm_nil[a]: strm(a);
+dec strm_cons[a]: (a, strm(a)) -> strm(a);
+
+imp{a} strm_nil[a] =
+  lam(u:()) => @stcn_nil[a];
+
+imp{a} strm_cons[a] =
+  lam(xy: (a, strm(a))) =>
+    lam(u:()) => @stcn_cons[a](xy);
+
+dec strm_nilq[a]: strm(a) -> bool;
+dec strm_consq[a]: strm(a) -> bool;
+dec strm_eval[a]: strm(a) -> stcn(a);
+
+imp{a} strm_nilq[a] =
+  lam(s: strm(a)) => D2TCK(s(()), "stcn_nil");
+
+imp{a} strm_consq[a] =
+  lam(s: strm(a)) => D2TCK(s(()), "stcn_cons");
+
+imp{a} strm_eval[a] = lam(s: strm(a)) => s(());

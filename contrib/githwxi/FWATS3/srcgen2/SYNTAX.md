@@ -19,7 +19,7 @@ letter or underscore; subsequent characters may also include digits and `$`.
 For example, `foo$bar`, `x$1`, and `name$` are valid, while `$foo` is invalid.
 This rule applies to all identifier names, including static parameters and
 constant names. Keywords are case-sensitive and reserved: `lam`, `fix`, `if`, `then`, `else`, `let`, `in`, `end`, `val`,
-`dec`, `imp`, `local`, `true`, and `false`.
+`dec`, `imp`, `local`, `true`, `false`, `D2CON`, `D2TCK`, and `D2ARG`.
 
 Whitespace and newlines separate tokens but otherwise have no meaning. `#`
 starts a comment through the end of the line, except inside a string.
@@ -79,13 +79,19 @@ multiplicative   = unary { ("*" | "/" | "%") unary } ;
 unary            = ("+" | "-") unary | postfix ;
 postfix          = atom { parenthesized | "." integer | static-args } ;
 atom             = integer | string | "true" | "false"
+                 | generic-operator
                  | identifier | constant | parenthesized ;
+generic-operator = ("D2CON" "(" string { "," expression } [","] ")"
+                 | "D2TCK" "(" expression "," string ")"
+                 | "D2ARG" "(" expression "," expression ")") ;
 parenthesized    = "(" [ expression
                    [ "," [ expression { "," expression } [","] ] ] ] ")" ;
 
 type             = type-atom [ "->" type ] ;
-type-atom        = identifier [static-args]
+type-atom        = identifier [constructor-args]
                  | parenthesized-type ;
+constructor-args = static-args
+                 | "(" [ type { "," type } [","] ] ")" ;
 parenthesized-type = "(" [ type
                      [ "," [ type { "," type } [","] ] ] ] ")" ;
 ```
@@ -136,7 +142,7 @@ All AST sequences below use `fnlist`, preserving source order.
 | --- | --- |
 | `a` or `(a)` | `S2Evar("a")` |
 | `int` or `int[]` | `S2Econ("int", fnlist_nil())` |
-| `list[a]` | `S2Econ("list", [S2Evar("a")])` |
+| `list(a)` or `list[a]` | `S2Econ("list", [S2Evar("a")])` |
 | `a -> b` | `S2Efun(a, b)` |
 | `()` | `S2Etupl([])` |
 | `(a,)` | `S2Etupl([a])` |
@@ -155,9 +161,22 @@ Use `(a -> b) -> c` for a function taking a function.
 
 The ground types are `sint`, `bool`, and `string`; the checker treats `int`
 as an alias for `sint` for compatibility with the examples;
-`()` is the unit type. `list[t]` and `optn[t]` are conventional parameterized
-types. These names are ordinary constructors, not parser keywords. Constructor
-existence and arity belong to later validation.
+`()` is the unit type. The polymorphic constructors `list(t)` (lists) and
+`strm(t)` (streams) each require exactly one element type. For example,
+`list(sint)` is the type of integer lists and `strm(sint)` is the type of
+integer streams. They are distinct nominal types. `optn(t)` likewise takes
+one argument.
+
+Constructor arguments may use parentheses or brackets: `list(a)` and
+`list[a]` produce the same `S2Econ`. This applies to type constructors
+generally, and supports nesting such as `list(strm(a))` and tuple elements
+such as `strm((a,b))`. Arity is checked by the type checker, so `list()`
+and `strm(a,b)` are rejected there. Type variables cannot be applied.
+Names remain ordinary constructors, not parser keywords; template static
+application still uses brackets, as in `@identity[list(sint)]`.
+
+This adds type constructors only. Runtime list construction and stream
+production/forcing operations are not provided by this change.
 
 Bare `S2E000` placeholders have no source syntax. Static variables have explicit
 names; there is no inference-hole or wildcard notation in this design.
@@ -213,6 +232,30 @@ Parameter types are required. A `fix` also requires its result type; its name
 and parameter must differ. The intended scope of a lambda parameter is its
 body; the intended scope of both fix-bound names is the fix body. There is no
 separate lambda result annotation in the current AST.
+
+## Generic operators and constructed values
+
+`D2CON` is a generic operator that constructs a value with a named data
+constructor:
+
+```text
+D2CON("list_nil")
+D2CON("list_cons", head, tail)
+```
+
+These parse as `D2Eopx("D2CON", args)`, where `args` is an ordered
+`d2explst`. The first argument must be a string literal naming the constructor;
+remaining arguments become its fields. Runtime evaluation returns
+`D2Vcon(name, fields)`. The list library uses this to implement `list_nil` and
+`list_cons`. The checker currently recognizes the list constructors `list_nil` and `list_cons`, and the option constructors `optn_nil` and `optn_cons`:
+`list_nil` has result type `list(?)`, and `list_cons` infers the head type and checks
+the tail has the corresponding list type. `D2TCK(value, tag)` returns whether a `D2Vcon` has that constructor name.
+`D2ARG(value, index)` selects a constructor field by a zero-based integer
+literal. The current checker supports these operations for list values:
+for lists, index zero returns the element type and index one returns the list
+type (tail); for options, index zero returns the contained type. Runtime
+checks reject non-constructed values and out-of-range fields. Other `D2CON`
+names and generic operators are not yet registered with the checker/interpreter.
 
 ## Bindings and let expressions
 

@@ -13,6 +13,7 @@ class FWATS3SyntaxError(SyntaxError):
 
 _KEYWORDS = set("lam fix if then else let in end val dec imp local true false".split())
 _DECLARATIONS = {"val", "dec", "imp", "local"}
+_GENERIC_OPERATORS = {"D2CON", "D2TCK", "D2ARG"}
 _COMPARISONS = {"<", ">", "<=", ">=", "==", "!="}
 _TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>\#[^\r\n]*)'
@@ -90,7 +91,7 @@ class _Parser:
             kind = match.lastgroup
             value = match.group()
             if kind not in {"space", "comment"}:
-                if kind == "symbol" or value in _KEYWORDS:
+                if kind == "symbol" or value in _KEYWORDS or value in _GENERIC_OPERATORS:
                     kind = value
                 yield _Token(kind, value, pos)
             pos = match.end()
@@ -173,11 +174,16 @@ class _Parser:
         else:
             name = self.expect("identifier").value
             if name in self.static_vars:
-                if self.current.kind == "[":
+                if self.current.kind in {"[", "("}:
                     self.error("Static variables cannot take static arguments")
                 result = ast.S2Evar(name)
             else:
-                args = self.static_args() if self.current.kind == "[" else ast.fnlist_nil()
+                if self.current.kind == "[":
+                    args = self.static_args()
+                elif self.current.kind == "(":
+                    args = _fnlist(self.comma_list("(", ")", self.type))
+                else:
+                    args = ast.fnlist_nil()
                 result = ast.S2Econ(name, args)
         if self.take("->"):
             result = ast.S2Efun(result, self.type())
@@ -315,6 +321,18 @@ class _Parser:
             return ast.D2Ebtf(True)
         if self.take("false"):
             return ast.D2Ebtf(False)
+        for operator in _GENERIC_OPERATORS:
+            if self.take(operator):
+                args = self.comma_list("(", ")", self.expression)
+                if operator == "D2CON":
+                    if not args or not isinstance(args[0], ast.D2Estr):
+                        self.error("D2CON requires a string as its first argument")
+                elif operator == "D2TCK":
+                    if len(args) != 2 or not isinstance(args[1], ast.D2Estr):
+                        self.error("D2TCK requires a value followed by a string tag")
+                elif len(args) != 2:
+                    self.error("D2ARG requires exactly two arguments")
+                return ast.D2Eopx(operator, _fnlist(args))
         if self.take("@"):
             return ast.D2Ecst(self.expect("identifier").value)
         token = self.take("identifier")

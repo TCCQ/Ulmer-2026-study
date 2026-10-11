@@ -1,0 +1,22 @@
+dec optn_nil[a]: () -> optn(a);
+dec optn_cons[a]: a -> optn(a);
+
+imp{a} optn_nil[a] =
+  lam(u:()) => D2CON("optn_nil");
+
+imp{a} optn_cons[a] =
+  lam(x: a) => D2CON("optn_cons", x);
+
+dec optn_nilq[a]: optn(a) -> bool;
+dec optn_consq[a]: optn(a) -> bool;
+
+imp{a} optn_nilq[a] =
+  lam(opt: optn(a)) => D2TCK(opt, "optn_nil");
+
+imp{a} optn_consq[a] =
+  lam(opt: optn(a)) => D2TCK(opt, "optn_cons");
+
+dec optn_uncons[a]: optn(a) -> a;
+
+imp{a} optn_uncons[a] =
+  lam(opt: optn(a)) => D2ARG(opt, 0);

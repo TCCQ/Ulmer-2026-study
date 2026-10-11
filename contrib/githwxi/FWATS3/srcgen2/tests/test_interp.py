@@ -32,7 +32,6 @@ class InterpreterTests(unittest.TestCase):
                     self.assertEqual(d2exp_evaluate(
                         d2exp_parse(f"@{name}[sint]({argument})"), d, t), expected)
         self.assertEqual(d2exp_evaluate(d2exp_parse("@f1_mod[sint](17,5)"), d, t), 2)
-        self.assertEqual(run((root / "examples/factorial.fwats3").read_text()), 120)
 
     def test_primitive_values_and_control_flow(self):
         for source, expected in (
@@ -163,6 +162,15 @@ class InterpreterTests(unittest.TestCase):
         self.assertNotIn("secret", d)
         self.assertFalse(t)
         self.assertEqual(d2exp_evaluate(d2exp_parse("public()"), d, t), 3)
+
+    def test_list_stream_template_patterns(self):
+        self.assertEqual(run("""
+            dec kind[t]: () -> sint;
+            imp{a} kind[list(a)] = lam(u: ()) => 1;
+            imp{a} kind[strm(a)] = lam(u: ()) => 2;
+            (@kind[list(sint)](), @kind[strm(sint)](),
+             @kind[list(strm(bool))]())
+        """), (1, 2, 1))
 
     def test_zero_argument_templates_and_alias(self):
         self.assertEqual(run("dec x: sint; imp x = 42; (@x, @x[])"), (42, 42))

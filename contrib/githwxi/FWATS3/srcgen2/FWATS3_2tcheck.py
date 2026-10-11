@@ -93,8 +93,41 @@ def _show(t):
     return repr(t)
 
 
+def _stream_thunk(t):
+    if isinstance(t, a.S2Econ) and t.arg1 == "strm":
+        args = _items(t.arg2)
+        if len(args) == 1:
+            stcn = a.S2Econ("stcn", _list(args))
+            return a.S2Efun(UNIT, stcn)
+    return None
+
+
+def _compatible(actual, expected):
+    actual_stream = _stream_thunk(actual)
+    expected_stream = _stream_thunk(expected)
+    if actual_stream is not None and expected_stream is None:
+        return _compatible(actual_stream, expected)
+    if expected_stream is not None and actual_stream is None:
+        return _compatible(actual, expected_stream)
+    if type(actual) is a.S2E000 or type(expected) is a.S2E000:
+        return True
+    if isinstance(actual, a.S2Econ) and isinstance(expected, a.S2Econ):
+        return (actual.arg1 == expected.arg1
+                and len(_items(actual.arg2)) == len(_items(expected.arg2))
+                and all(_compatible(x, y) for x, y in
+                        zip(_items(actual.arg2), _items(expected.arg2))))
+    if isinstance(actual, a.S2Efun) and isinstance(expected, a.S2Efun):
+        return (_compatible(actual.arg1, expected.arg1)
+                and _compatible(actual.arg2, expected.arg2))
+    if isinstance(actual, a.S2Etupl) and isinstance(expected, a.S2Etupl):
+        return (len(_items(actual.arg1)) == len(_items(expected.arg1))
+                and all(_compatible(x, y) for x, y in
+                        zip(_items(actual.arg1), _items(expected.arg1))))
+    return s2exp_equal(actual, expected)
+
+
 def _equal(actual, expected, where):
-    if not s2exp_equal(actual, expected):
+    if not _compatible(actual, expected):
         raise FWATS3TypeError(f"{where}: expected {_show(expected)}, got {_show(actual)}")
 
 
@@ -107,7 +140,7 @@ class _Checker:
         if isinstance(t, a.S2Econ):
             name = "sint" if t.arg1 == "int" else t.arg1
             args = [self.type(x, scope) for x in _items(t.arg2)]
-            arity = {"sint": 0, "bool": 0, "string": 0, "list": 1, "optn": 1}.get(name)
+            arity = {"sint": 0, "bool": 0, "string": 0, "list": 1, "strm": 1, "stcn": 1, "optn": 1}.get(name)
             if arity is not None and len(args) != arity:
                 raise FWATS3TypeError(f"Type constructor {name!r} expects {arity} arguments")
             return a.S2Econ(name, _list(args))
@@ -160,6 +193,63 @@ class _Checker:
             name = e.arg1.arg1
             args = [self.type(t, scope) for t in _items(e.arg2)]
             return self.instantiate(self.signature(name, env), args, name)
+        if isinstance(e, a.D2Eopx):
+            args = _items(e.arg1)
+            if e.name == "D2CON":
+                if not args or not isinstance(args[0], a.D2Estr):
+                    raise FWATS3TypeError("D2CON requires a string constructor name first")
+                constructor = args[0].arg1
+                if constructor == "list_nil" and len(args) == 1:
+                    return a.S2Econ("list", _list([a.S2E000()]))
+                if constructor == "list_cons" and len(args) == 3:
+                    head_type = self.expression(args[1], env, scope)
+                    tail_type = self.expression(args[2], env, scope)
+                    expected = a.S2Econ("list", _list([head_type]))
+                    _equal(tail_type, expected, "D2CON list_cons tail")
+                    return expected
+                if constructor == "optn_nil" and len(args) == 1:
+                    return a.S2Econ("optn", _list([a.S2E000()]))
+                if constructor == "optn_cons" and len(args) == 2:
+                    value_type = self.expression(args[1], env, scope)
+                    return a.S2Econ("optn", _list([value_type]))
+                if constructor == "stcn_nil" and len(args) == 1:
+                    return a.S2Econ("stcn", _list([a.S2E000()]))
+                if constructor == "stcn_cons" and len(args) == 3:
+                    head_type = self.expression(args[1], env, scope)
+                    tail_type = self.expression(args[2], env, scope)
+                    expected_tail = a.S2Econ("strm", _list([head_type]))
+                    _equal(tail_type, expected_tail, "D2CON stcn_cons tail")
+                    return a.S2Econ("stcn", _list([head_type]))
+                raise FWATS3TypeError(f"Invalid D2CON constructor or arity for {constructor!r}")
+            if e.name == "D2TCK":
+                if len(args) != 2 or not isinstance(args[1], a.D2Estr):
+                    raise FWATS3TypeError("D2TCK requires a value followed by a string tag")
+                value_type = self.expression(args[0], env, scope)
+                if not isinstance(value_type, a.S2Econ) or value_type.arg1 not in {"list", "optn", "stcn"}:
+                    raise FWATS3TypeError("D2TCK requires a constructed value")
+                return BOOL
+            if e.name == "D2ARG":
+                if len(args) != 2:
+                    raise FWATS3TypeError("D2ARG requires a value and a field index")
+                value_type = self.expression(args[0], env, scope)
+                index = args[1]
+                if not isinstance(index, a.D2Eint):
+                    raise FWATS3TypeError("D2ARG field index must be an integer literal")
+                if isinstance(value_type, a.S2Econ) and value_type.arg1 in {"list", "optn", "stcn"}:
+                    element_types = _items(value_type.arg2)
+                    if len(element_types) != 1:
+                        raise FWATS3TypeError(f"Malformed {value_type.arg1} type")
+                    if value_type.arg1 == "list" and index.arg1 in (0, 1):
+                        return element_types[0] if index.arg1 == 0 else value_type
+                    if value_type.arg1 == "optn" and index.arg1 == 0:
+                        return element_types[0]
+                    if value_type.arg1 == "stcn" and index.arg1 == 0:
+                        return element_types[0]
+                    if value_type.arg1 == "stcn" and index.arg1 == 1:
+                        return a.S2Econ("strm", _list(element_types))
+                    raise FWATS3TypeError(f"Invalid {value_type.arg1} constructor field index")
+                raise FWATS3TypeError("D2ARG requires a constructed value with known fields")
+            raise FWATS3TypeError(f"Unknown generic operator {e.name!r}")
         if isinstance(e, a.D2Eop1):
             if e.name not in {"+", "-"}:
                 raise FWATS3TypeError(f"Unknown unary operator {e.name!r}")
@@ -195,6 +285,12 @@ class _Checker:
             return function
         if isinstance(e, a.D2Eapp):
             function = self.expression(e.arg1, env, scope)
+            if isinstance(function, a.S2Econ) and function.arg1 == "strm":
+                stream_args = _items(function.arg2)
+                if len(stream_args) != 1:
+                    raise FWATS3TypeError("Malformed stream type")
+                _equal(self.expression(e.arg2, env, scope), UNIT, "Stream force argument")
+                return a.S2Econ("stcn", _list(stream_args))
             if not isinstance(function, a.S2Efun):
                 raise FWATS3TypeError(f"Application requires a function, got {_show(function)}")
             _equal(self.expression(e.arg2, env, scope), function.arg1, "Function argument")

@@ -22,6 +22,9 @@ how the syntax, checker, and interpreter fit together.
 | [FWATS3_2tcheck.py](FWATS3_2tcheck.py) | Expression typing, signature instantiation, implementation checking |
 | [FWATS3_2interp.py](FWATS3_2interp.py) | Evaluation with two lexical environments and template dispatch |
 | [mylib/1.fwats3](mylib/1.fwats3) | Numeric template constants, generic factorial, and generic Fibonacci |
+| [mylib/list.fwats3](mylib/list.fwats3) | List constructors and queries |
+| [mylib/optn.fwats3](mylib/optn.fwats3) | Option constructors, tag queries, and extraction |
+| [mylib/strm.fwats3](mylib/strm.fwats3) | Lazy streams and stream constructor nodes |
 
 The execution path is explicit:
 
@@ -91,9 +94,20 @@ right: `a -> b -> c` means `a -> (b -> c)`.
 
 The checker uses `sint`, `bool`, and `string` as primitive types. It normalizes
 `int` to `sint` for compatibility with earlier examples. Unit is the empty
-tuple type `()`. The known constructors `list` and `optn` each take one argument;
-they do not by themselves supply runtime list or option operations. Other
-constructor names are nominal and have no checked arity in this version.
+tuple type `()`. The polymorphic constructors `list(t)` and `strm(t)` denote
+lists and streams with element type `t`. For example, `list(sint)` denotes
+integer lists. They are distinct nominal types and each requires exactly one
+argument, as does `optn(t)`. Constructor arguments support either parentheses
+or brackets: `list(a)` and `list[a]` have the same AST. Nesting such as
+`strm(list(a))` and `stcn(a)` work in signatures, annotations, and template
+patterns. Each of list, strm, stcn, and optn has one type argument. The strm(a)
+runtime representation is a delayed unit function returning stcn(a); applying
+the stream to unit forces one node. Streams are not memoized, so every force
+reevaluates the delayed computation. stcn_nil and stcn_cons are constructor
+values built by the stream library. The checker recognizes forcing a stream
+and the fields of stream constructor nodes. List, option, and stream operations
+are supplied by their library files. Other constructor names are nominal and
+have no checked arity.
 
 ### 2.3 Functions, application, and expressions
 
@@ -125,8 +139,8 @@ Lambda, fix, if, and let bodies extend as far right as their enclosing syntax
 permits. Parenthesize them when used as arithmetic operands or the function in
 a call. A conditional requires both branches.
 
-The parser constructs `D2Elam`, `D2Efix`, `D2Eapp`, `D2Eif0`, `D2Etupl`, and
-`D2Eproj` directly. Unary signs use `D2Eop1`; binary operations use `D2Eop2`
+The parser constructs `D2Elam`, `D2Efix`, `D2Eapp`, `D2Eif0`, `D2Etupl`,
+`D2Eproj`, and generic `D2Eopx(name, d2explst)` nodes directly. Unary signs use `D2Eop1`; binary operations use `D2Eop2`
 with their literal operator spelling. No expression is evaluated by parsing.
 
 ### 2.4 Let and local declarations
@@ -312,12 +326,25 @@ This separation permits a generic factorial body to use `@f1_mul[a]`: its type
 comes from `f1_mul`'s signature. Selection of multiplication for a concrete type
 occurs only after factorial has been instantiated.
 
+The generic operator `D2Eopx("D2CON", args)` is currently recognized by the
+checker for list and option constructors. `D2CON("list_nil")` has the polymorphic result
+`list(?)`; `D2CON("list_cons", head, tail)` infers the head type and checks the
+tail against `list(head_type)`. `D2CON("optn_nil")` has result type
+`optn(?)`; `D2CON("optn_cons", value)` infers the contained type and returns
+`optn(value_type)`. The unknown element types for empty constructors are checker
+placeholders accepted when comparing against the enclosing expected signature. Other generic
+operator names are rejected.
+
 ## 5. Two-environment interpreter
 
 ### 5.1 Values and closure representations
 
-Runtime values are Python integers, booleans, strings, tuples, and explicit
-function closures. Unit is the empty Python tuple. There are two environments:
+Runtime values are Python integers, booleans, strings, tuples, constructed
+values, and explicit function closures. Unit is the empty Python tuple. A
+constructed value is `D2Vcon(name, args)`, with the constructor name and an
+ordered `fnlist` of `D2VAL` arguments. Nested constructors are supported. The
+helper `d2val_format` prints them recursively, for example
+`D2Vcon("Cons", [D2Vcon("Nil", []), ...])` as `Cons(Nil(), ...)`. There are two environments:
 
 | Environment | Representation | Purpose |
 | --- | --- | --- |
@@ -327,6 +354,7 @@ function closures. Unit is the empty Python tuple. There are two environments:
 The three closure records are:
 
 ```text
+D2Vcon(name, args)
 D2Vlam(expression, denv, tenv)
 D2Vfix(expression, denv, tenv)
 TemplateClosure(implementation, denv, tenv)
@@ -553,7 +581,7 @@ The implementation has no implicit static-argument inference, no higher-order
 polymorphic template values, and no automatic specialization priority. Type
 checking does not establish implementation availability, runtime safety from
 division by zero, or termination. General type-constructor declarations and
-runtime list/option libraries are not implemented.
+runtime operations are supplied by the list, option, and stream template libraries.
 
 At runtime, `dec` is erased, so lexical signature visibility is enforced by the
 checker rather than by `tenv`. In particular, the checker keeps private

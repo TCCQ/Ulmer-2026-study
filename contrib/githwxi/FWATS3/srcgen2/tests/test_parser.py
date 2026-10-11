@@ -32,6 +32,21 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(s2exp_parse("list[a,]", static_vars={"a"}),
                          a.S2Econ("list", seq(var)))
 
+    def test_parenthesized_type_constructors(self):
+        for source, equivalent in (
+            ("list(sint)", "list[sint]"),
+            ("strm(a)", "strm[a]"),
+            ("list(strm(a))", "list[strm[a]]"),
+            ("strm((a, sint))", "strm[(a,sint)]"),
+            ("list(a -> sint)", "list[a -> sint]"),
+            ("strm(a,)", "strm[a]"),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(s2exp_parse(source, static_vars={"a"}),
+                                 s2exp_parse(equivalent, static_vars={"a"}))
+        with self.assertRaises(FWATS3SyntaxError):
+            s2exp_parse("a(sint)", static_vars={"a"})
+
     def test_precedence_and_associativity(self):
         self.assertEqual(d2exp_parse("-1 + 2 * 3 - 4 / +2 < 9"),
             a.D2Eop2("<",

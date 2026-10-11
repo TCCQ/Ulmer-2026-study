@@ -1,0 +1,29 @@
+dec list_nil[a]: () -> list(a);
+dec list_cons[a]: (a, list(a)) -> list(a);
+
+imp{a} list_nil[a] =
+  lam(u: ()) => D2CON("list_nil");
+
+imp{a} list_cons[a] =
+  lam(xy: (a, list(a))) => D2CON("list_cons", xy.0, xy.1);
+
+dec list_nilq[a]: list(a) -> bool;
+dec list_consq[a]: list(a) -> bool;
+
+imp{a} list_nilq[a] =
+  lam(xs: list(a)) => D2TCK(xs, "list_nil");
+
+imp{a} list_consq[a] =
+  lam(xs: list(a)) => D2TCK(xs, "list_cons");
+
+dec list_head[a]: list(a) -> a;
+dec list_tail[a]: list(a) -> list(a);
+
+imp{a} list_head[a] = lam(xs: list(a)) => D2ARG(xs, 0);
+
+imp{a} list_tail[a] = lam(xs: list(a)) => D2ARG(xs, 1);
+
+dec list_uncons[a]: list(a) -> (a, list(a));
+
+imp{a} list_uncons[a] =
+  lam(xs: list(a)) => (D2ARG(xs, 0), D2ARG(xs, 1));

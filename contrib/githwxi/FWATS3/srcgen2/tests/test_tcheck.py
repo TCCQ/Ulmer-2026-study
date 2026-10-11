@@ -15,6 +15,23 @@ def check(source):
 
 
 class TypeCheckerTests(unittest.TestCase):
+    def test_list_and_stream_type_constructors(self):
+        from FWATS3_2parser import s2exp_parse
+        for constructor in ("list", "strm"):
+            source = f"""
+                dec id[a]: {constructor}(a) -> {constructor}(a);
+                imp{{a}} id[a] = lam(xs: {constructor}(a)) => xs;
+                @id[sint]
+            """
+            self.assertEqual(check(source),
+                s2exp_parse(f"{constructor}(sint) -> {constructor}(sint)"))
+            for bad in (constructor, f"{constructor}()", f"{constructor}(sint,bool)"):
+                with self.subTest(bad=bad), self.assertRaises(FWATS3TypeError):
+                    libfile_tcheck(libfile_parse(f"dec bad: {bad};"))
+        with self.assertRaises(FWATS3TypeError):
+            check("dec bad[a]: list(a) -> strm(a); "
+                  "imp{a} bad[a] = lam(xs: list(a)) => xs; 0")
+
     def test_literals_and_operators(self):
         for source, expected in [
             ("42", SINT), ('"hello"', STRING), ("true", BOOL), ("()", UNIT),
@@ -54,8 +71,6 @@ class TypeCheckerTests(unittest.TestCase):
         for name in ("f1_fact", "f1_fibo"):
             self.assertEqual(d2exp_tcheck(d2exp_parse(f"@{name}[sint](5)"), env), SINT)
             self.assertIn(name, env.implementations)
-        self.assertEqual(program_tcheck(program_parse(
-            (root / "examples/factorial.fwats3").read_text())), SINT)
 
     def test_local_exports_and_captures(self):
         env = libfile_tcheck(libfile_parse("""

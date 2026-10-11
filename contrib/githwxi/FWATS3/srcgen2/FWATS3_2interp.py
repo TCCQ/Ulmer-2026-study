@@ -12,9 +12,15 @@ class FWATS3RuntimeError(RuntimeError):
     """Invalid runtime operation or missing template implementation."""
 
 
-type denv = Mapping[str, d2val]
+type denv = Mapping[str, D2VAL]
 type tenv = tuple[TemplateClosure, ...]
-type d2val = int | bool | str | tuple[d2val, ...] | D2Vlam | D2Vfix
+
+
+@dataclass(frozen=True)
+class D2Vcon:
+    """A constructed runtime value: constructor name and ordered fields."""
+    name: str
+    args: a.fnlist["D2VAL"]
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,30 @@ class TemplateClosure:
     implementation: a.D2Cimpl
     denv: denv
     tenv: tenv
+
+
+type D2VAL = int | bool | str | tuple[D2VAL, ...] | D2Vcon | D2Vlam | D2Vfix
+type d2val = D2VAL
+
+
+def d2val_format(value: D2VAL) -> str:
+    """Return a readable representation, recursively formatting constructors."""
+    if isinstance(value, D2Vcon):
+        args = list(_items(value.args))
+        if not args:
+            return f"{value.name}()"
+        return f"{value.name}(" + ", ".join(d2val_format(x) for x in args) + ")"
+    if isinstance(value, tuple):
+        return "(" + ", ".join(d2val_format(x) for x in value) + ("," if len(value) == 1 else "") + ")"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, str)):
+        return repr(value) if isinstance(value, str) else str(value)
+    if isinstance(value, D2Vlam):
+        return "<lam>"
+    if isinstance(value, D2Vfix):
+        return "<fix>"
+    raise FWATS3RuntimeError(f"Unsupported runtime value: {type(value).__name__}")
 
 
 def _snapshot(environment):
@@ -172,6 +202,32 @@ class _Interpreter:
             function = self.expression(e.arg1, variables, templates)
             argument = self.expression(e.arg2, variables, templates)
             return self.apply(function, argument)
+        if isinstance(e, a.D2Eopx):
+            args = list(_items(e.arg1))
+            if e.name == "D2CON":
+                if not args or not isinstance(args[0], a.D2Estr):
+                    raise FWATS3RuntimeError("D2CON requires a string constructor name first")
+                name = args[0].arg1
+                fields = (self.expression(x, variables, templates) for x in args[1:])
+                return D2Vcon(name, _list(fields))
+            if e.name == "D2TCK":
+                if len(args) != 2 or not isinstance(args[1], a.D2Estr):
+                    raise FWATS3RuntimeError("D2TCK requires a value followed by a string tag")
+                value = self.expression(args[0], variables, templates)
+                if not isinstance(value, D2Vcon):
+                    raise FWATS3RuntimeError("D2TCK requires a constructed value")
+                return value.name == args[1].arg1
+            if e.name == "D2ARG":
+                if len(args) != 2:
+                    raise FWATS3RuntimeError("D2ARG requires a value and a field index")
+                value = self.expression(args[0], variables, templates)
+                index = self.expression(args[1], variables, templates)
+                if not isinstance(value, D2Vcon):
+                    raise FWATS3RuntimeError("D2ARG requires a constructed value")
+                if type(index) is not int or not 0 <= index < len(list(_items(value.args))):
+                    raise FWATS3RuntimeError("D2ARG field index is out of bounds")
+                return list(_items(value.args))[index]
+            raise FWATS3RuntimeError(f"Unknown generic operator {e.name!r}")
         if isinstance(e, a.D2Eop1):
             if e.name not in {"+", "-"}:
                 raise FWATS3RuntimeError(f"Unknown unary operator {e.name!r}")
