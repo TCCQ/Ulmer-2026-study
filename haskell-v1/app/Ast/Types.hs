@@ -40,12 +40,12 @@ data DExp
   | DTapp TName [SExp] -- type applications on template
   deriving (Show, Eq)
 
-newtype TImpl = TImpl (TName, DExp, [SExp], SExp, Int)
-  -- name, body, type binds in order, body type, tag
+newtype TImpl = TImpl (TName, DExp, [SExp], Int)
+  -- name, body, type binds in order, tag
   deriving (Show)
 
 instance Eq TImpl where
-  (TImpl (_,_,_,_,i)) == (TImpl (_,_,_,_,j)) = i == j
+  (TImpl (_,_,_,i)) == (TImpl (_,_,_,j)) = i == j
 
 newtype TDecl = TDecl (TName, [SName], SExp)
   -- name, arg var names, output type over arg names

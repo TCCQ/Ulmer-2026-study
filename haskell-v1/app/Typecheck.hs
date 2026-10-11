@@ -163,7 +163,7 @@ instance TypeCheck DDecl where
         unless (priorD == d) $
           gErr $ "Template doesn't match prior decl\n" ++ (render $ pp priorD) ++ "verus new decl\n" ++ (render $ pp d)
         pure (rt, e)
-  typecheck e@(DImpl imp@(TImpl (n, b, as, bt, _))) = do
+  typecheck e@(DImpl imp@(TImpl (n, b, as, _))) = do
     tctx <- gets tCtx
     decl@(TDecl (_, ans, rt)) <- case M.lookup n (declared tctx) of
       Just d -> pure d
@@ -171,13 +171,10 @@ instance TypeCheck DDecl where
         gErr $ "Template not already declared\n" ++ (render $ pp imp)
     subst <- foldM sMerge substEmpty =<< sequence (zipWith (\n a -> sMatch (SVar n) a) ans as)
     shapeRt <- sSubst rt subst
-    unless (shapeRt == bt) $
-      gErr $ "Impl doesn't match template decl\n" ++ (render $ pp imp) ++ "verus\n" ++ (render $ pp decl)
     (computedBt, _) <- typecheck b
-    unless (computedBt == bt) $
-      gErr $ "Type doesn't match annotation in\n" ++ (render $ pp e) ++
-        "Computed body type\n" ++ (render $ pp computedBt)
-    pure (bt, e)
+    unless (computedBt == shapeRt) $
+      gErr $ "Impl doesn't match template decl\n" ++ (render $ pp imp) ++ "verus\n" ++ (render $ pp decl)
+    pure (shapeRt, e)
   typecheck   (DLocal ds bs) = do
     ds' <- mapM typecheck ds
     let wrapper x = foldr insertDecl x ds'
@@ -199,7 +196,7 @@ insertDecl (_, (DTDec dec@(TDecl (n, _, _)))) act =
   let helper1 x = x { declared = M.insert n dec (declared x) }
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
-insertDecl (_, (DImpl impl@(TImpl (n, _, _, _, _)))) act =
+insertDecl (_, (DImpl impl@(TImpl (n, _, _, _)))) act =
   let helper1 x = x { impls = M.insertWith (++) n [impl] (impls x) }
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act

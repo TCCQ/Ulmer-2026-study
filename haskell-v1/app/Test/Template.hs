@@ -25,49 +25,48 @@ con name = SCon name []
 arr :: SExp -> SExp -> SExp
 arr arg1 arg2 = SCon "Arr" [arg1, arg2]
 
--- | An implementation: what it expands to, the argument types it takes, the
--- type of that, and a tag.  The tag is written out rather than counted up
--- because two implementations are the same exactly when their tags are.
-timpl :: TName -> DExp -> [SExp] -> SExp -> Int -> DDecl
-timpl name body pats ret tag = DImpl (TImpl (name, body, pats, ret, tag))
+-- | An implementation: what it expands to, the argument types it takes, and a
+-- tag.  The tag is written out rather than counted up because two
+-- implementations are the same exactly when their tags are.  The result type is
+-- not stored: the checker derives it from the declaration.
+timpl :: TName -> DExp -> [SExp] -> Int -> DDecl
+timpl name body pats tag = DImpl (TImpl (name, body, pats, tag))
 
 -- | zero@Nat := 0, with a concrete parameter type.
 zeroImpl :: DDecl
-zeroImpl = timpl "zero" (DInt 0) [con "Nat"] (con "Nat") 0
+zeroImpl = timpl "zero" (DInt 0) [con "Nat"] 0
 
 -- | id@a := lam x. x, with a variable parameter type.
 idImpl :: DDecl
-idImpl = timpl "id" (DLam ("x", SVar "a") (DVar "x")) [SVar "a"]
-                   (SFun (SVar "a") (SVar "a")) 1
+idImpl = timpl "id" (DLam ("x", SVar "a") (DVar "x")) [SVar "a"] 1
 
 -- | pair@a,b := (x, y), which captures x and y.
 pairImpl :: DDecl
-pairImpl = timpl "pair" (DTuple [DVar "x", DVar "y"]) [SVar "a", SVar "b"]
-                     (STuple [SVar "a", SVar "b"]) 2
+pairImpl = timpl "pair" (DTuple [DVar "x", DVar "y"]) [SVar "a", SVar "b"] 2
 
 -- | swap@a := (p.1, p.0), which captures p.
 swapImpl :: DDecl
 swapImpl = timpl "swap" (DTuple [DProj 1 (DVar "p"), DProj 0 (DVar "p")])
-                     [SVar "a"] (STuple [SVar "a", SVar "a"]) 3
+                     [SVar "a"] 3
 
 -- | inc@Nat := n + 1, which captures n.
 incImpl :: DDecl
-incImpl = timpl "inc" (DOp2 "+" (DVar "n") (DInt 1)) [con "Nat"] (con "Nat") 4
+incImpl = timpl "inc" (DOp2 "+" (DVar "n") (DInt 1)) [con "Nat"] 4
 
 -- | inc2@a := inc@a, which uses another template.
 inc2Impl :: DDecl
-inc2Impl = timpl "inc2" (DTapp "inc" [SVar "a"]) [SVar "a"] (SVar "a") 5
+inc2Impl = timpl "inc2" (DTapp "inc" [SVar "a"]) [SVar "a"] 5
 
 -- | inc3@a := inc@a + inc@a, with two nested uses.
 inc3Impl :: DDecl
 inc3Impl = timpl "inc3"
   (DOp2 "+" (DTapp "inc" [SVar "a"]) (DTapp "inc" [SVar "a"]))
-  [SVar "a"] (con "Nat") 6
+  [SVar "a"] 6
 
 -- | pick@a, implemented once for every type and once for Nat alone.
 genericPick, concretePick :: DDecl
-genericPick = timpl "pick" (DVar "generic") [SVar "a"] (SVar "a") 7
-concretePick = timpl "pick" (DVar "nat") [con "Nat"] (con "Nat") 8
+genericPick = timpl "pick" (DVar "generic") [SVar "a"] 7
+concretePick = timpl "pick" (DVar "nat") [con "Nat"] 8
 
 -- | annot@a := lam x. fix f(n). if n == 0 then x else f(n - 1), whose
 -- annotations all mention the parameter.
@@ -81,13 +80,12 @@ annotBody a =
        (SFun a a))
 
 annotImpl :: DDecl
-annotImpl = timpl "annot" (annotBody (SVar "a")) [SVar "a"]
-  (SFun (SVar "a") (SFun (SVar "a") (SVar "a"))) 9
+annotImpl = timpl "annot" (annotBody (SVar "a")) [SVar "a"] 9
 
 -- | keep@a := lam x. lam y. x, where b stands for nothing.
 keepImpl :: DDecl
 keepImpl = timpl "keep" (DLam ("x", SVar "a") (DLam ("y", SVar "b") (DVar "x")))
-                    [SVar "a"] (SFun (SVar "a") (SFun (SVar "b") (SVar "a"))) 10
+                    [SVar "a"] 10
 
 -- | fact@a := fix f(n). if n == 0 then 1 else n * f(n - 1).
 factImpl :: DDecl
@@ -98,22 +96,22 @@ factImpl = timpl "fact"
           (DOp2 "*" (DVar "n")
                     (DApp (DVar "f") (DOp2 "-" (DVar "n") (DInt 1)))))
      (SFun (SVar "a") (SVar "a")))
-  [SVar "a"] (SFun (SVar "a") (SVar "a")) 11
+  [SVar "a"] 11
 
 selfImpl :: DDecl
-selfImpl = timpl "self" (DTapp "self" [con "Nat"]) [con "Nat"] (con "Nat") 20
+selfImpl = timpl "self" (DTapp "self" [con "Nat"]) [con "Nat"] 20
 
 selfBase :: DDecl
-selfBase = timpl "self" (DInt 1) [con "Nat"] (con "Nat") 19
+selfBase = timpl "self" (DInt 1) [con "Nat"] 19
 
 innerA :: DDecl
-innerA = timpl "inner" (DInt 1) [con "Nat"] (con "Nat") 30
+innerA = timpl "inner" (DInt 1) [con "Nat"] 30
 
 innerB :: DDecl
-innerB = timpl "inner" (DInt 2) [con "Nat"] (con "Nat") 31
+innerB = timpl "inner" (DInt 2) [con "Nat"] 31
 
 outerUse :: DDecl
-outerUse = timpl "outer" (DTapp "inner" [con "Nat"]) [con "Nat"] (con "Nat") 32
+outerUse = timpl "outer" (DTapp "inner" [con "Nat"]) [con "Nat"] 32
 
 factorial :: Int -> Int
 factorial n = product [1 .. n]
@@ -139,8 +137,8 @@ implCtx decls =
   where
     declaredNames = [n | DTDec (TDecl (n, _, _)) <- decls]
     tdecls = nub
-      [ DTDec (TDecl (n, argNames (length pats), ret))
-      | DImpl (TImpl (n, _, pats, ret, _)) <- decls
+      [ DTDec (TDecl (n, argNames (length pats), anyType))
+      | DImpl (TImpl (n, _, pats, _)) <- decls
       , n `notElem` declaredNames
       ]
 
@@ -190,7 +188,7 @@ templateUses = go
     go _ = []
 
     goDecl (DBind _ e) = go e
-    goDecl (DImpl (TImpl (_, e, _, _, _))) = go e
+    goDecl (DImpl (TImpl (_, e, _, _))) = go e
     goDecl _ = []
 
 -- | Parse a program, expand its templates, and evaluate what is left.
@@ -282,7 +280,7 @@ tests =
           -- in inc<Nat>(1) end
           program = DLet
             [ DTDec (TDecl ("inc", ["a"], nat))
-            , DImpl (TImpl ("inc", (DOp2 "+" (DVar "n") (DInt 1)), [nat], nat, 12))
+            , DImpl (TImpl ("inc", (DOp2 "+" (DVar "n") (DInt 1)), [nat], 12))
             ]
             (Just (DApp (DTapp "inc" [nat]) (DInt 1)))
       result <- unwrap "expanding the let" (templateExpand program)
@@ -332,10 +330,10 @@ tests =
   , testCase "a program with a template parses, expands and evaluates" $
       assertValue "twice@Nat applied to 20" (DValInt 21) $
         runProgram
-          [ "tdecl twice<'a> ('a, 'a) -> 'a ;"
-          , "inc = lam (n : Nat) n + 1 ;"
-          , "impl twice<Nat> inc : Nat -> Nat ;"
-          , "twice<Nat>(20)"
+          [ "dec twice[a]: (a, a) -> a;"
+          , "val inc = lam (n : Nat) => n + 1;"
+          , "imp twice[Nat] = inc;"
+          , "@twice[Nat](20)"
           ]
   , testCase "a self-recursive implementation is blocked by the blacklist" $ do
       tctx <- implCtx [selfImpl]
