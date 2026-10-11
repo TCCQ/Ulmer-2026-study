@@ -1,0 +1,72 @@
+dec f0_0[a]: () -> (a);
+dec f0_1[a]: () -> (a);
+dec f1_si[a]: (sint) -> (a);
+
+dec f1_lt[a]: (a, a) -> bool;
+dec f1_gt[a]: (a, a) -> bool;
+dec f1_eq[a]: (a, a) -> bool;
+dec f1_lte[a]: (a, a) -> bool;
+dec f1_gte[a]: (a, a) -> bool;
+dec f1_neq[a]: (a, a) -> bool;
+
+dec f1_add[a]: (a, a) -> ( a );
+dec f1_sub[a]: (a, a) -> ( a );
+dec f1_mul[a]: (a, a) -> ( a );
+dec f1_div[a]: (a, a) -> ( a );
+dec f1_mod[a]: (a, a) -> ( a );
+
+imp f0_0[sint] = lam(u:()) => 0;
+imp f0_1[sint] = lam(u:()) => 1;
+imp f1_si[sint] = lam(x:sint) => x;
+
+imp f1_lt[sint] =
+  lam(xy: (sint, sint)) => xy.0 < xy.1;
+imp f1_gt[sint] =
+  lam(xy: (sint, sint)) => xy.0 > xy.1;
+imp f1_eq[sint] =
+  lam(xy: (sint, sint)) => xy.0 == xy.1;
+imp f1_lte[sint] =
+  lam(xy: (sint, sint)) => xy.0 <= xy.1;
+imp f1_gte[sint] =
+  lam(xy: (sint, sint)) => xy.0 >= xy.1;
+imp f1_neq[sint] =
+  lam(xy: (sint, sint)) => xy.0 != xy.1;
+
+imp f1_add[sint] = lam(xy: (sint, sint)) => xy.0 + xy.1;
+imp f1_sub[sint] = lam(xy: (sint, sint)) => xy.0 - xy.1;
+imp f1_mul[sint] = lam(xy: (sint, sint)) => xy.0 * xy.1;
+imp f1_div[sint] = lam(xy: (sint, sint)) => xy.0 / xy.1;
+imp f1_mod[sint] = lam(xy: (sint, sint)) => xy.0 % xy.1;
+
+# Generic factorial;
+# requires one, comparison, subtraction,
+# and multiplication implementations for a.
+# Intended for nonnegative integer-like inputs.
+dec f1_fact[a]: a -> a;
+
+imp{a} f1_fact[a] =
+let
+  val one = @f0_1[a]()
+in
+  fix fact(n: a): a =>
+    if @f1_lte[a](n, one) then one
+    else @f1_mul[a](n, fact(@f1_sub[a](n, one)))
+end;
+
+# Generic Fibonacci;
+# requires one, comparison, subtraction,
+# and addition implementations for a.
+# Intended for nonnegative integer-like inputs: F(0) = 0, F(1) = 1.
+dec f1_fibo[a]: a -> a;
+
+imp{a} f1_fibo[a] =
+let
+  val one = @f0_1[a]();
+  val two = @f1_si[a](2)
+in
+  fix fibo(n: a): a =>
+    if @f1_lte[a](n, one) then n
+    else @f1_add[a](
+      fibo(@f1_sub[a](n, one)),
+      fibo(@f1_sub[a](n, two)))
+end;
