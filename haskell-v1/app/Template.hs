@@ -19,7 +19,7 @@ chooseImpl n args = do
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
   let applySuitable :: TImpl -> M (Maybe (DExp, Int))
-      applySuitable (TImpl (n', body, sBinds, _, tag))
+      applySuitable (TImpl (n', body, sBinds, tag))
         | n == n' && not (elem tag bl) = do
             let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, Subst))
                 helper useArg (vName, implArg) = do
@@ -58,7 +58,7 @@ insertDecl :: DDecl -> M a -> M a
 insertDecl (DTDec d@(TDecl (name, _, _))) act = do
   let update (sc,x,bl) = (sc, x { declared = M.insert name d (declared x)}, bl)
   extend update act
-insertDecl (DImpl d@(TImpl (name, _, _, _, _))) act = do
+insertDecl (DImpl d@(TImpl (name, _, _, _))) act = do
   (s@(SCtx sctx), tctx, bl) <- get
   ctx' <- case (M.lookup name sctx, M.lookup name (declared tctx)) of
     (Nothing, Just _) ->
@@ -75,10 +75,10 @@ class Expandable d where
 instance Expandable DDecl where
   templateExpand t@(DTDec _) = pure t
   templateExpand (DBind n e) = DBind n <$> templateExpand e
-  templateExpand e@(DImpl (TImpl (_, _, _, _, _))) = do
+  templateExpand e@(DImpl (TImpl (_, _, _, _))) = do
     -- we don't include this impl when expanding the body
     -- b' <- blacklist tag $ templateExpand b
-    -- pure $ DImpl (TImpl (n, b', args, ret, tag))
+    -- pure $ DImpl (TImpl (n, b', args, tag))
     pure e --don't do any expansion eagerly
   templateExpand (DLocal ds bs) = do
     -- not mutually recursive

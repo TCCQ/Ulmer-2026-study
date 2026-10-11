@@ -206,29 +206,21 @@ tests =
 
   , testCase "implementation requires a prior declaration" $
       assertTypeLeft "implementation without a declaration" $
-        typecheck (DImpl (TImpl ("f", DInt 1, [], intType, 0)))
+        typecheck (DImpl (TImpl ("f", DInt 1, [], 0)))
 
   , testCase "implementation matching its declaration typechecks" $
       assertType "zero implementation" intType $
         typecheck (DProgram
           [ DTDec (TDecl ("zero", [], intType))
-          , DImpl (TImpl ("zero", DInt 0, [], intType, 0))
+          , DImpl (TImpl ("zero", DInt 0, [], 0))
           ]
           (DInt 0))
 
-  , testCase "implementation whose body disagrees with its annotation is rejected" $
-      assertTypeLeft "body is a string but the annotation says Int" $
+  , testCase "implementation whose body disagrees with its declaration is rejected" $
+      assertTypeLeft "body is a string but the declaration says Int" $
         typecheck (DProgram
           [ DTDec (TDecl ("zero", [], intType))
-          , DImpl (TImpl ("zero", DStr "s", [], intType, 0))
-          ]
-          (DInt 0))
-
-  , testCase "implementation whose instantiated return type disagrees is rejected" $
-      assertTypeLeft "implementation return type disagrees" $
-        typecheck (DProgram
-          [ DTDec (TDecl ("zero", [], intType))
-          , DImpl (TImpl ("zero", DInt 0, [], stringType, 0))
+          , DImpl (TImpl ("zero", DStr "s", [], 0))
           ]
           (DInt 0))
 
@@ -239,7 +231,6 @@ tests =
           , DImpl (TImpl ( "id"
                          , DLam ("x", SVar "a") (DVar "x")
                          , [SVar "a"]
-                         , SFun (SVar "a") (SVar "a")
                          , 1 ))
           ]
           (DInt 0))
