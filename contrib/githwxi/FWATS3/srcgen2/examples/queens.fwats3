@@ -1,0 +1,52 @@
+# Count the 8-queen solutions using backtracking.
+# Load mylib/1.fwats3 and mylib/list.fwats3 before checking/evaluating this program.
+# A board is a list of row indices, one per already placed column.
+
+let
+  val append = fix append_fn(xs: (list(list(sint)), list(list(sint))))
+      : list(list(sint)) =>
+    if @list_nilq[list(sint)](xs.0) then xs.1
+    else @list_cons[list(sint)](
+      @list_head[list(sint)](xs.0),
+      append_fn((@list_tail[list(sint)](xs.0), xs.1)));
+
+  val safe = fix safe_fn(state: (sint, list(sint), sint)): bool =>
+    if @list_nilq[sint](state.1) then true
+    else
+      let
+        val row = @list_head[sint](state.1);
+        val distance = state.2
+      in
+        if @f1_eq[sint](state.0, row) then false
+        else if @f1_eq[sint](state.0, @f1_add[sint](row, distance)) then false
+        else if @f1_eq[sint](@f1_add[sint](state.0, distance), row) then false
+        else safe_fn((state.0, @list_tail[sint](state.1),
+          @f1_add[sint](distance, 1)))
+      end;
+
+  val solve = fix solve_fn(state: (list(sint), sint)): list(list(sint)) =>
+    if @f1_eq[sint](state.1, 8) then
+      @list_cons[list(sint)](state.0, @list_nil[list(sint)]())
+    else
+      let
+        val try_rows = fix try_fn(rows: (sint, list(sint), sint)): list(list(sint)) =>
+          if @f1_eq[sint](rows.0, 8) then @list_nil[list(sint)]()
+          else
+            if safe((rows.0, rows.1, 1)) then
+              append(
+                solve_fn((@list_cons[sint](rows.0, rows.1),
+                  @f1_add[sint](rows.2, 1))),
+                try_fn((@f1_add[sint](rows.0, 1), rows.1, rows.2)))
+            else try_fn((@f1_add[sint](rows.0, 1), rows.1, rows.2))
+      in
+        try_rows((0, state.0, state.1))
+      end;
+
+  val count = fix count_fn(xs: list(list(sint))): sint =>
+    if @list_nilq[list(sint)](xs) then 0
+    else @f1_add[sint](1, count_fn(@list_tail[list(sint)](xs)));
+
+  val solutions = solve((@list_nil[sint](), 0))
+in
+  count(solutions)
+end
