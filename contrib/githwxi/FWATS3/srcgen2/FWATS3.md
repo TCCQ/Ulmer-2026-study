@@ -250,6 +250,31 @@ application then calls that value with `42`. A specialized function value can
 be stored in an ordinary variable and passed to another function. Unspecialized
 templates are not first-class polymorphic values in this implementation.
 
+This still permits higher-order functions when the function argument has an
+ordinary, monomorphic function type after template instantiation. For example,
+`apply` is generic in its input and output types, and accepts a callback from
+that particular input type to that particular output type:
+
+```fwats3
+dec identity[a]: a -> a;
+imp{a} identity[a] = lam(x: a) => x;
+
+dec apply[a, b]: ((a -> b), a) -> b;
+imp{x, y} apply[x, y] =
+  lam(args: ((x -> y), x)) => args.0(args.1);
+
+@apply[sint, sint](@identity[sint], 42)
+```
+
+Here `@identity[sint]` first selects and evaluates the `sint` specialization.
+The resulting ordinary value has type `sint -> sint`, so `apply[sint,sint]`
+can accept it. The callback cannot remain polymorphic while it is passed:
+FWATS3 has no `forall` type, no syntax for a variable whose value can be
+instantiated at multiple types, and no way to pass bare `@identity` without
+choosing its static argument. A function such as `apply` can be a template
+itself, but each use still specializes it explicitly, and its callback type is
+fixed by that specialization.
+
 The grammar permits static application after an arbitrary expression, but the
 checker and interpreter currently require its target to be a `D2Ecst`.
 Static arguments are explicit; there is no inference from dynamic arguments.
@@ -580,8 +605,10 @@ recursive evaluation; there is no tail-call optimization.
 The implementation has no implicit static-argument inference, no higher-order
 polymorphic template values, and no automatic specialization priority. Type
 checking does not establish implementation availability, runtime safety from
-division by zero, or termination. General type-constructor declarations and
-runtime operations are supplied by the list, option, and stream template libraries.
+division by zero, or termination. User-defined type-constructor declarations
+are unsupported; `list`, `optn`, `strm`, and `stcn` are built-in type
+constructors. Runtime list, option, and stream operations are provided by the
+template libraries in `mylib/`.
 
 At runtime, `dec` is erased, so lexical signature visibility is enforced by the
 checker rather than by `tenv`. In particular, the checker keeps private
