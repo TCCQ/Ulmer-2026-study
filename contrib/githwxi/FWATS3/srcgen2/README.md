@@ -3,6 +3,9 @@
 Requires Python 3.12 or later. No third-party dependencies or build step are
 needed. Run commands from this directory.
 
+See [FWATS3.md](FWATS3.md) for the language and implementation guide, including
+template checking, matching, substitution, and two-environment closures.
+
 ## Modules
 
 - `FWATS3_2basics.py` defines the level-2 AST, functional lists/options, and
