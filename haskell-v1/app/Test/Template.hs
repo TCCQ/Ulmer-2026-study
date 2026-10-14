@@ -215,7 +215,7 @@ runProgram source = do
     Right p  -> case bindProgram p of
       Left err -> gErr (show err)
       Right (_, p') -> pure p'
-  expanded <- templateExpand program
+  expanded <- stripProgram =<< templateExpand program
   case expanded of
     DProgram binds body -> d2expLet [] binds (Just body)
 
@@ -353,11 +353,11 @@ tests =
             (d2expEvaluateNil result)
 
   , testCase "a program with a template parses, expands and evaluates" $
-      assertValue "twice@Int applied to 20" (DValInt 21) $
+      assertValue "twice@Int applied to 20" (DValInt 400) $
         runProgram
-          [ "dec twice[a]: (a, a) -> a;"
-          , "val inc = lam (n : Int) => n + 1;"
-          , "imp twice[Int] = inc;"
+          [ "dec twice[a]: a -> a;"
+          , "val mul = lam (n : Int) => n * n;"
+          , "imp twice[Int] = mul;"
           , "@twice[Int](20)"
           ]
   , testCase "a self-recursive implementation is blocked by the blacklist" $ do

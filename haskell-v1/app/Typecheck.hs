@@ -102,7 +102,7 @@ instance TypeCheck (DExp Name) where
   typecheck e@(DProj i b) = do
     (bt, b') <- typecheck b
     case bt of
-      STuple ss | length ss < i ->
+      STuple ss | length ss <= i ->
                   gErr $ "Projection larger than tuple length\n" ++ (render $ pp e)
                 | otherwise -> pure (ss !! i, DProj i b')
       _ -> gErr $ "Project on non tuple type\n" ++ (render $ pp e)

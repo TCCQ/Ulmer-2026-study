@@ -10,6 +10,9 @@ import Ast.Util (freeS)
 
 import Text.PrettyPrint
 
+rpp :: Pretty a => a -> String
+rpp = render . pp
+
 class Pretty a where
   pp :: a -> Doc
 
