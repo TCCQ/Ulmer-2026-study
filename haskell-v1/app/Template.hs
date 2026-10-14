@@ -9,7 +9,6 @@ module Template
   )
 where
 
-import Control.Monad (zipWithM)
 import Control.Applicative ((<|>))
 import Data.List (foldl')
 
@@ -28,23 +27,17 @@ applySnapshot snapshot act = do
 chooseImpl :: TName -> [(SExp Name)] -> M ((DExp Name), Int)
 chooseImpl n args = do
   (tctx, bl) <- gets (\(_,x,bl) -> (x,bl))
-  (impls, (TDecl (_,snames,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
+  (impls, (TDecl (_,_,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
     (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
   let applySuitable :: (TImpl Name) -> TCtx Name -> M (Maybe ((DExp Name), Int))
       applySuitable (TImpl (n', _, body, sBinds, tag)) snapshot
         | n == n' && not (elem tag bl) = do
-            let helper :: (SExp Name) -> (SName, (SExp Name)) -> M (Maybe (SName, (Subst Name)))
-                helper useArg (vName, implArg) = do
-                  maybeSubst <- sMatchMaybe implArg useArg -- ss from impl -> use if exists
-                  pure ((\ms -> (vName,ms)) <$> maybeSubst)
-            maybeSubsts <- sequence <$> zipWithM helper args (zip snames sBinds)
-            case maybeSubsts of
+            maybeSubst <- sMatchMaybe (STuple sBinds) (STuple args)
+            case maybeSubst of
               Nothing -> pure Nothing
-              Just substs -> do
-                {- we have a successful match, instantiate -}
-                totalSubst <- foldr (\s acc -> acc >>= sMerge s) (pure substEmpty) (map snd substs)
+              Just totalSubst -> do
                 body' <- sSubstD body totalSubst
                 expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
                   (blacklist tag $ applySnapshot snapshot $ templateExpand body')
@@ -74,7 +67,16 @@ insertDecl (DImpl d@(TImpl (name, _, _, _, _))) act = do
     (Just _, _) -> gErr $ "Name " ++ show name ++ " appears in both tctx and sctx."
     (_, Nothing) -> gErr $ "Name " ++ show name ++ " implemented but not declared"
   extend (const ctx') act
-insertDecl _ act = act
+insertDecl (DLocal ds bs) act = do
+  let helper1 [] act = do
+          x <- act
+          pure ([], x)
+      helper1 (d:ds) act = do
+          (ds', act') <- insertDecl d (helper1 ds act)
+          pure (d:ds', act')
+  (_, (bs', ())) <- helper1 ds $ helper1 bs $ pure ()
+  foldr insertDecl act bs'
+insertDecl (DBind _ _) act = act
 
 class Expandable d where
   templateExpand :: d -> M d

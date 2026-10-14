@@ -155,9 +155,14 @@ instance TypeCheck (DDecl Name) where
       gErr $ "Impl doesn't match template decl\n" ++ (render $ pp imp) ++ "verus\n" ++ (render $ pp decl)
     pure (shapeRt, e)
   typecheck   (DLocal ds bs) = do
-    ds' <- mapM typecheck ds
-    let wrapper x = foldr insertDecl x ds'
-    bs' <- wrapper $ mapM typecheck bs
+    let helper1 [] act = do
+          x <- act
+          pure ([], x)
+        helper1 (d:ds) act = do
+          d' <- typecheck d
+          (ds', act') <- insertDecl d' (helper1 ds act)
+          pure (d':ds', act')
+    (ds', (bs', ())) <- helper1 ds $ helper1 bs $ pure ()
     pure (error "No type on DLocal", DLocal (map snd ds') (map snd bs'))
 
 instance TypeCheck (DProgram Name) where
@@ -180,10 +185,15 @@ insertDecl (_, (DImpl impl@(TImpl (n, _, _, _, _)))) act =
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
 insertDecl (_, (DLocal binds decls)) act = do
-  binds' <- mapM typecheck binds
-  let wrapper x = foldr insertDecl x binds'
-  decls' <- wrapper $ mapM typecheck decls
-  foldr (\d acc -> wrapper $ insertDecl d acc) act decls'
+  let helper1 [] act = do
+          x <- act
+          pure ([], x)
+      helper1 (d:ds) act = do
+          d' <- typecheck d
+          (ds', act') <- insertDecl d' (helper1 ds act)
+          pure (d':ds', act')
+  (_, (bs', ())) <- helper1 binds $ helper1 decls $ pure ()
+  foldr insertDecl act bs'
 
 unknownName :: Pretty n => n -> TT a
 unknownName n = TM $ \_ _ -> Left (ErrorName (render $ pp n))

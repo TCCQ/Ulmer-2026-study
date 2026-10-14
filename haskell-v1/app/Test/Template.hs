@@ -267,6 +267,23 @@ tests =
         (DVar (testName "generic"), 7)
         =<< chosen "choosing pick@Bool" "pick" [con "Bool"] tctx
 
+  , testCase "a repeated parameter that conflicts falls through" $ do
+      -- generic  = imp{x,y} choose[x,y] = 1
+      -- repeated = imp{x}   choose[x,x] = 2   (newer)
+      let generic = timpl "choose"
+            (DInt 1) [SVar (testName "x"), SVar (testName "y")] 40
+          repeated = timpl "choose"
+            (DInt 2) [SVar (testName "x"), SVar (testName "x")] 41
+      tctx <- implCtx [generic, repeated]
+      assertEqual "choose@(Nat,Bool) rejects [x,x] and falls back"
+        (DInt 1, 40)
+        =<< chosen "choosing choose@(Nat,Bool)" "choose"
+                    [con "Nat", con "Bool"] tctx
+      assertEqual "choose@(Nat,Nat) takes the newer repeated implementation"
+        (DInt 2, 41)
+        =<< chosen "choosing choose@(Nat,Nat)" "choose"
+                    [con "Nat", con "Nat"] tctx
+
   , testCase "a use of an unknown template is unresolved" $ do
       tctx <- implCtx [idImpl]
       assertLeft "no implementation is found for the name" $
@@ -369,4 +386,15 @@ tests =
       tctx <- implCtx [selfBase, selfImpl]
       assertEqual "the older implementation fills the recursive use" (DInt 1)
         =<< resolved (DTapp (testName "self") [con "Nat"]) tctx
+
+  , testCase "instantiation does not modify the syntax tree" $ do
+      tctx <- implCtx [incImpl, inc2Impl]
+      -- srcgen2 checks that expanding a use leaves the program alone and is
+      -- repeatable; here expansion is pure, so the observable property is that
+      -- expanding an already expanded expression changes nothing.
+      let program = DApp (DTapp (testName "inc2") [con "Nat"]) (DInt 5)
+      once <- resolved program tctx
+      twice <- resolved once tctx
+      assertEqual "expanding an expanded expression is the identity" once twice
   ]
+
