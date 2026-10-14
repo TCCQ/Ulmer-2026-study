@@ -11,8 +11,8 @@ data DVal
   | DValBtf Bool
   | DValStr String
   | DValTupl [DVal]
-  | DValLam DEnv (DName, SExp) DExp
-  | DValFix DEnv DName (DName, SExp) DExp SExp
+  | DValLam DEnv (DName, (SExp Name)) (DExp Name)
+  | DValFix DEnv DName (DName, (SExp Name)) (DExp Name) (SExp Name)
   deriving (Show, Eq)
 
 type DEnv = [(DName, DVal)]
@@ -33,10 +33,10 @@ instance Pretty DVal where
 dValNil :: DVal
 dValNil = DValTupl []
 
-d2expEvaluateNil :: DExp -> M DVal
+d2expEvaluateNil :: (DExp Name) -> M DVal
 d2expEvaluateNil dexp = d2expEvaluate dexp []
 
-d2expEvaluate :: DExp -> DEnv -> M DVal
+d2expEvaluate :: (DExp Name) -> DEnv -> M DVal
 d2expEvaluate dexp denv = case dexp of
   DInt i -> pure (DValInt i)
   DBool b -> pure (DValBtf b)
@@ -45,7 +45,7 @@ d2expEvaluate dexp denv = case dexp of
   DOp2 n a b -> d2expOp2 denv n a b
   DVar n -> case lookup n denv of
     Just v -> pure v
-    Nothing -> gErr $ "Unbound variable " ++ n
+    Nothing -> gErr $ "Unbound variable " ++ (render $ pp n)
   DLam nt body -> pure (DValLam denv nt body)
   DFix nSelf nt body ot -> pure (DValFix denv nSelf nt body ot)
   DApp f a -> d2expApp denv f a
@@ -56,37 +56,37 @@ d2expEvaluate dexp denv = case dexp of
   DTapp e _ -> gErr $ "Template application " ++ show e ++
                        " cannot be interpreted"
 
-d2expOp1 :: DEnv -> DName -> DExp -> M DVal
+d2expOp1 :: DEnv -> DName -> (DExp Name) -> M DVal
 d2expOp1 denv n a = do
   va <- d2expEvaluate a denv
   case va of
     DValInt i -> case n of
-      "-" -> pure (DValInt (i * (-1)))
-      _ -> gErr $ "Unknown unary operator " ++ n
-    _ -> gErr $ "Operator " ++ n ++ " expects an integer argument"
+      ("-", _) -> pure (DValInt (i * (-1)))
+      _ -> gErr $ "Unknown unary operator " ++ (render $ pp n)
+    _ -> gErr $ "Operator " ++ (render $ pp n) ++ " expects an integer argument"
 
-d2expOp2 :: DEnv -> DName -> DExp -> DExp -> M DVal
+d2expOp2 :: DEnv -> DName -> (DExp Name) -> (DExp Name) -> M DVal
 d2expOp2 denv n a b = do
   va <- d2expEvaluate a denv
   vb <- d2expEvaluate b denv
   case (va, vb) of
     (DValInt x, DValInt y) -> d2intOp2 n x y
-    _ -> gErr $ "Operator " ++ n ++ " expects integer arguments"
+    _ -> gErr $ "Operator " ++ (render $ pp n) ++ " expects integer arguments"
 
 d2intOp2 :: DName -> Int -> Int -> M DVal
 d2intOp2 n x y = case n of
-  "+" -> pure (DValInt (x + y))
-  "-" -> pure (DValInt (x - y))
-  "*" -> pure (DValInt (x * y))
-  "<" -> pure (DValBtf (x < y))
-  ">" -> pure (DValBtf (x > y))
-  "<=" -> pure (DValBtf (x <= y))
-  ">=" -> pure (DValBtf (x >= y))
-  "==" -> pure (DValBtf (x == y))
-  "!=" -> pure (DValBtf (x /= y))
-  _ -> gErr $ "Unknown binary operator " ++ n
+  ("+",_) -> pure (DValInt (x + y))
+  ("-",_) -> pure (DValInt (x - y))
+  ("*",_) -> pure (DValInt (x * y))
+  ("<",_) -> pure (DValBtf (x < y))
+  (">",_) -> pure (DValBtf (x > y))
+  ("<=",_) -> pure (DValBtf (x <= y))
+  (">=",_) -> pure (DValBtf (x >= y))
+  ("==",_) -> pure (DValBtf (x == y))
+  ("!=",_) -> pure (DValBtf (x /= y))
+  _ -> gErr $ "Unknown binary operator " ++ (render $ pp n)
 
-d2expApp :: DEnv -> DExp -> DExp -> M DVal
+d2expApp :: DEnv -> (DExp Name) -> (DExp Name) -> M DVal
 d2expApp denv f a = do
   vf <- d2expEvaluate f denv
   va <- d2expEvaluate a denv
@@ -97,7 +97,7 @@ d2expApp denv f a = do
       d2expEvaluate body ((nArg, va) : (nSelf, vf) : denvFix)
     _ -> gErr "Application of a value that is not a lambda or a fixpoint"
 
-d2expIf :: DEnv -> DExp -> DExp -> DExp -> M DVal
+d2expIf :: DEnv -> (DExp Name) -> (DExp Name) -> (DExp Name) -> M DVal
 d2expIf denv c a b = do
   vc <- d2expEvaluate c denv
   case vc of
@@ -105,7 +105,7 @@ d2expIf denv c a b = do
     DValBtf False -> d2expEvaluate b denv
     _ -> gErr "If condition is not a boolean"
 
-d2expProj :: DEnv -> Int -> DExp -> M DVal
+d2expProj :: DEnv -> Int -> (DExp Name) -> M DVal
 d2expProj denv i e = do
   ve <- d2expEvaluate e denv
   case ve of
@@ -115,14 +115,14 @@ d2expProj denv i e = do
           gErr $ "Tuple projection index out of range: " ++ show i
     _ -> gErr "Tuple projection of a value that is not a tuple"
 
-d2expLet :: DEnv -> [DDecl] -> Maybe DExp -> M DVal
+d2expLet :: DEnv -> [(DDecl Name)] -> Maybe (DExp Name) -> M DVal
 d2expLet denv ds body = do
   denvNew <- d2eclistEvaluate ds denv
   case body of
     Nothing -> pure dValNil
     Just b -> d2expEvaluate b denvNew
 
-d2eclEvaluate :: DDecl -> DEnv -> M DEnv
+d2eclEvaluate :: (DDecl Name) -> DEnv -> M DEnv
 d2eclEvaluate decl denv = case decl of
   DBind n e -> do
     v <- d2expEvaluate e denv
@@ -136,7 +136,7 @@ d2eclEvaluate decl denv = case decl of
   t@(DImpl _) ->
     gErr $ "Template implementation " ++ show t ++ " cannot be interpreted"
 
-d2eclistEvaluate :: [DDecl] -> DEnv -> M DEnv
+d2eclistEvaluate :: [(DDecl Name)] -> DEnv -> M DEnv
 d2eclistEvaluate [] denv = pure denv
 d2eclistEvaluate (decl:decls) denv = do
   denvNew <- d2eclEvaluate decl denv

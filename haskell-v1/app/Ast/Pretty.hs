@@ -16,20 +16,23 @@ class Pretty a where
 instance Pretty String where
   pp = text
 
+instance Pretty Name where
+  pp (n,i) = text n <> char '#' <> int i
+
 -- instance Pretty SName where
 --   pp = text
 
-instance Pretty SExp where
+instance (Pretty n, Eq n) => Pretty (SExp n) where
   pp (SCon n args) = pp n <> brackets (sep $ punctuate comma (pp <$> args))
   pp (SVar n) = pp n
   pp (SFun l r) = parens (pp l) <+> text "->" <+> pp r
   pp (STuple as) = parens $ sep $ punctuate comma $ pp <$> as
 
-instance Pretty DExp where
+instance (Pretty n, Eq n) => Pretty (DExp n) where
   pp (DInt i) = int i
   pp (DBool b) = if b then text "true" else text "false"
   pp (DStr s) = text s
-  pp (DOp1 s e) = text s <> parens (pp e)
+  pp (DOp1 s e) = pp s <> parens (pp e)
   pp (DOp2 s l r) = parens (pp l) <+> pp s <+> parens (pp r)
   pp (DVar n) = pp n
   pp (DLam (a, at) b) =
@@ -54,12 +57,12 @@ instance Pretty DExp where
          Just b  -> header $+$ text "in" $+$ nest 2 (pp b) $+$ text "end"
   pp (DTapp n args) = char '@' <> pp n <> brackets (sep $ punctuate comma $ pp <$> args)
 
-instance Pretty TDecl where
+instance (Pretty n, Eq n) => Pretty (TDecl n) where
   pp (TDecl (n, as, r)) =
     text "dec" <+> pp n <> brackets (sep $ punctuate comma (pp <$> as)) <+> char ':' <+> pp r
 
-instance Pretty TImpl where
-  pp (TImpl (n, body, binds, _)) =
+instance (Pretty n, Eq n) => Pretty (TImpl n) where
+  pp (TImpl (n, _, body, binds, _)) =
     let params = nub (concatMap freeS binds)
         braces' = if null params
           then empty
@@ -67,7 +70,7 @@ instance Pretty TImpl where
     in text "imp" <+> braces' <+> pp n <>
        brackets (sep $ punctuate comma $ pp <$> binds) <+> char '=' <+> pp body
 
-instance Pretty DDecl where
+instance (Pretty n, Eq n) => Pretty (DDecl n) where
   pp (DBind n b) = text "val" <+> pp n <+> char '=' <+> pp b
   pp (DTDec t) = pp t
   pp (DImpl t) = pp t
@@ -76,5 +79,5 @@ instance Pretty DDecl where
     hang (text "in") 2 ((vcat $ punctuate semi (map pp ds))) $+$
     text "end"
 
-instance Pretty DProgram where
+instance (Pretty n, Eq n) => Pretty (DProgram n) where
   pp (DProgram binds body) = (sep (punctuate semi $ pp <$> binds) <> semi) $+$ pp body

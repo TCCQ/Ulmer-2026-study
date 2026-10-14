@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Typecheck where
 
 import Ast
@@ -10,62 +11,40 @@ import qualified Data.Map.Lazy as M
 
 
 data TR = TR
-  { dCtx :: M.Map DName SExp
-  , tCtx :: TCtx
+  { dCtx :: M.Map DName (SExp Name)
+  , tCtx :: TCtx Name
     -- TODO need sctx?
   } deriving (Show)
 
-type TT a = TM () TR a
+type TT a = TM Int TR a
 
 initTR :: TR
 initTR = TR M.empty emptyTCtx
 
-runTT :: TT a -> Either Error a
-runTT act = snd <$> runTM act () initTR
+-- runTT :: TT a -> Either Error a
+-- runTT act = snd <$> runTM act () initTR
 
--- builtinS :: [(SName, SExp)]
+evalTT :: TT a -> Int -> Either Error (Int, a)
+evalTT act nextI = runTM act nextI initTR
+
+-- builtinS :: [(SName, (SExp Name))]
 -- buildinS =
 --   [ ("Int", SCon "Int" [])
 --   , ("Bool", SCon "Bool" [])
 --   ]
 
-builtinOp2 :: [(DName, SExp)]
-builtinOp2 =
-  [ ("+",  SFun (STuple [intType , intType]) intType)
-  , ("-",  SFun (STuple [intType , intType]) intType)
-  , ("*",  SFun (STuple [intType , intType]) intType)
-  , ("<",  SFun (STuple [intType , intType]) boolType)
-  , (">",  SFun (STuple [intType , intType]) boolType)
-  , ("<=", SFun (STuple [intType , intType]) boolType)
-  , (">=", SFun (STuple [intType , intType]) boolType)
-  , ("==", SFun (STuple [intType , intType]) boolType)
-  , ("!=", SFun (STuple [intType , intType]) boolType)
-  ]
-
-intType :: SExp
-intType = SCon "Int" []
-
-boolType :: SExp
-boolType = SCon "Bool" []
-
-stringType :: SExp
-stringType = SCon "String" []
-
-unitType :: SExp
-unitType = STuple []
-
 -- TODO check that it's structurally sound
 -- And use exhaustively in typechecking value level
-typecheck' :: SExp -> TT SExp
+typecheck' :: (SExp Name) -> TT (SExp Name)
 typecheck' s = pure s
 
-insertName :: DName -> SExp -> TR -> TR
+insertName :: DName -> (SExp Name) -> TR -> TR
 insertName n t c = c { dCtx = M.insert n t (dCtx c) }
 
 class TypeCheck a where
-  typecheck :: a -> TT (SExp, a)
+  typecheck :: a -> TT ((SExp Name), a)
 
-instance TypeCheck DExp where
+instance TypeCheck (DExp Name) where
   typecheck e@(DInt _) = pure (intType, e)
   typecheck e@(DBool _) = pure (boolType, e)
   typecheck e@(DStr _) = pure (stringType, e)
@@ -148,7 +127,7 @@ instance TypeCheck DExp where
     pure (computedBt, e) -- TODO replacement
 
 -- TODO this checks but does not do replacement
-instance TypeCheck DDecl where
+instance TypeCheck (DDecl Name) where
   typecheck (DBind n rhs) = do
     (t, rhs') <- typecheck rhs
     pure (t, DBind n rhs')
@@ -163,7 +142,7 @@ instance TypeCheck DDecl where
         unless (priorD == d) $
           gErr $ "Template doesn't match prior decl\n" ++ (render $ pp priorD) ++ "verus new decl\n" ++ (render $ pp d)
         pure (rt, e)
-  typecheck e@(DImpl imp@(TImpl (n, b, as, _))) = do
+  typecheck e@(DImpl imp@(TImpl (n, _, b, as, _))) = do
     tctx <- gets tCtx
     decl@(TDecl (_, ans, rt)) <- case M.lookup n (declared tctx) of
       Just d -> pure d
@@ -181,7 +160,7 @@ instance TypeCheck DDecl where
     bs' <- wrapper $ mapM typecheck bs
     pure (error "No type on DLocal", DLocal (map snd ds') (map snd bs'))
 
-instance TypeCheck DProgram where
+instance TypeCheck (DProgram Name) where
   typecheck (DProgram [] main) = do
     (mt, main') <- typecheck main
     pure (mt, DProgram [] main')
@@ -190,13 +169,13 @@ instance TypeCheck DProgram where
     (dt, DProgram rs' main') <- insertDecl bind' (typecheck (DProgram rs main))
     pure (dt, DProgram (b':rs') main')
 
-insertDecl :: (SExp, DDecl) -> TT a -> TT a
+insertDecl :: ((SExp Name), (DDecl Name)) -> TT a -> TT a
 insertDecl (t, (DBind n _)) act = extend (insertName n t) act
 insertDecl (_, (DTDec dec@(TDecl (n, _, _)))) act =
   let helper1 x = x { declared = M.insert n dec (declared x) }
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
-insertDecl (_, (DImpl impl@(TImpl (n, _, _, _)))) act =
+insertDecl (_, (DImpl impl@(TImpl (n, _, _, _, _)))) act =
   let helper1 x = x { impls = M.insertWith (++) n [impl] (impls x) }
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
@@ -206,5 +185,5 @@ insertDecl (_, (DLocal binds decls)) act = do
   decls' <- wrapper $ mapM typecheck decls
   foldr (\d acc -> wrapper $ insertDecl d acc) act decls'
 
-unknownName :: String -> TT a
-unknownName n = TM $ \_ _ -> Left (ErrorName n)
+unknownName :: Pretty n => n -> TT a
+unknownName n = TM $ \_ _ -> Left (ErrorName (render $ pp n))

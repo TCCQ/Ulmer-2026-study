@@ -23,6 +23,9 @@ executable fwats
                     , Ast.Types
                     , Ast.Util
                     , Ast.Pretty
+                    , Ast.MError
+                    , Ast.MMonad
+                    , Bind
                     , Interpret
                     , Parse
                     , Template
@@ -42,6 +45,9 @@ test-suite fwats-test
                     , Ast.Types
                     , Ast.Util
                     , Ast.Pretty
+                    , Ast.MError
+                    , Ast.MMonad
+                    , Bind
                     , Interpret
                     , Parse
                     , Template

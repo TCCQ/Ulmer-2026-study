@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Template where
 
 import Control.Monad (zipWithM)
@@ -11,17 +12,17 @@ import Ast
 blacklist :: Int -> M a -> M a
 blacklist tag act = extend (\(a,b,bl) -> (a,b,tag:bl)) act
 
-chooseImpl :: TName -> [SExp] -> M (DExp, Int)
+chooseImpl :: TName -> [(SExp Name)] -> M ((DExp Name), Int)
 chooseImpl n args = do
   (tctx, bl) <- gets (\(_,x,bl) -> (x,bl))
   (impls, (TDecl (_,snames,_))) <- case (M.lookup n (impls tctx), M.lookup n (declared tctx)) of
     (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
-  let applySuitable :: TImpl -> M (Maybe (DExp, Int))
-      applySuitable (TImpl (n', body, sBinds, tag))
+  let applySuitable :: (TImpl Name) -> M (Maybe ((DExp Name), Int))
+      applySuitable (TImpl (n', _, body, sBinds, tag))
         | n == n' && not (elem tag bl) = do
-            let helper :: SExp -> (SName, SExp) -> M (Maybe (SName, Subst))
+            let helper :: (SExp Name) -> (SName, (SExp Name)) -> M (Maybe (SName, (Subst Name)))
                 helper useArg (vName, implArg) = do
                   maybeSubst <- sMatchMaybe implArg useArg -- ss from impl -> use if exists
                   pure ((\ms -> (vName,ms)) <$> maybeSubst)
@@ -54,11 +55,11 @@ chooseImpl n args = do
     Nothing -> gErr $ "No matching impl for " ++ show n ++ " at " ++ show args ++ " in " ++ show tctx
     Just body -> pure body
 
-insertDecl :: DDecl -> M a -> M a
+insertDecl :: (DDecl Name) -> M a -> M a
 insertDecl (DTDec d@(TDecl (name, _, _))) act = do
   let update (sc,x,bl) = (sc, x { declared = M.insert name d (declared x)}, bl)
   extend update act
-insertDecl (DImpl d@(TImpl (name, _, _, _))) act = do
+insertDecl (DImpl d@(TImpl (name, _, _, _, _))) act = do
   (s@(SCtx sctx), tctx, bl) <- get
   ctx' <- case (M.lookup name sctx, M.lookup name (declared tctx)) of
     (Nothing, Just _) ->
@@ -72,21 +73,17 @@ insertDecl _ act = act
 class Expandable d where
   templateExpand :: d -> M d
 
-instance Expandable DDecl where
+instance Expandable (DDecl Name) where
   templateExpand t@(DTDec _) = pure t
+  templateExpand e@(DImpl _) = pure e --don't do any expansion eagerly
   templateExpand (DBind n e) = DBind n <$> templateExpand e
-  templateExpand e@(DImpl (TImpl (_, _, _, _))) = do
-    -- we don't include this impl when expanding the body
-    -- b' <- blacklist tag $ templateExpand b
-    -- pure $ DImpl (TImpl (n, b', args, tag))
-    pure e --don't do any expansion eagerly
   templateExpand (DLocal ds bs) = do
     -- not mutually recursive
     ds' <- mapM templateExpand ds
     bs' <- foldr insertDecl (mapM templateExpand bs) ds'
     pure $ DLocal ds' bs'
 
-instance Expandable DExp where
+instance Expandable (DExp Name) where
   templateExpand (DInt i) = pure (DInt i)
   templateExpand (DBool b) = pure (DBool b)
   templateExpand (DStr s) = pure (DStr s)
@@ -117,7 +114,7 @@ instance Expandable DExp where
   templateExpand (DTapp n ts) =
     fst <$> chooseImpl n ts
 
-instance Expandable DProgram where
+instance Expandable (DProgram Name) where
   templateExpand (DProgram [] body) = DProgram [] <$> templateExpand body
   templateExpand (DProgram (a:as) body) = do
     a' <- templateExpand a
@@ -125,7 +122,7 @@ instance Expandable DProgram where
     let binds = [x | Just x <- runtimeDecl <$> (a':as')]
     pure $ DProgram binds body'
 
-runtimeDecl :: DDecl -> Maybe DDecl
+runtimeDecl :: (DDecl Name) -> Maybe (DDecl Name)
 runtimeDecl x@(DBind _ _) = Just x
 runtimeDecl x@(DLocal _ _) = Just x
 runtimeDecl (DTDec _) = Nothing
