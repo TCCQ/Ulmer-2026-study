@@ -41,6 +41,9 @@ typecheck' s = pure s
 insertName :: DName -> (SExp Name) -> TR -> TR
 insertName n t c = c { dCtx = M.insert n t (dCtx c) }
 
+builtinSigs :: [(DName, (SExp Name))] -> DName -> [(SExp Name)]
+builtinSigs table n = [t | (name, t) <- table, name == n]
+
 class TypeCheck a where
   typecheck :: a -> TT ((SExp Name), a)
 
@@ -48,17 +51,22 @@ instance TypeCheck (DExp Name) where
   typecheck e@(DInt _) = pure (intType, e)
   typecheck e@(DBool _) = pure (boolType, e)
   typecheck e@(DStr _) = pure (stringType, e)
-  typecheck   (DOp1 _ _) = do
-    error "TODO builtin operators"
+  typecheck e@(DOp1 n a) = do
+    (at, a') <- typecheck a
+    zt <- case builtinSigs builtinOp1 n of
+      [] -> gErr $ "Unknown unary operator\n" ++ (render $ pp n)
+      sigs -> case [z | SFun x z <- sigs, x == at] of
+        (z:_) -> pure z
+        [] -> gErr $ "Type error in op\n" ++ (render $ pp e)
+    pure (zt, DOp1 n a')
   typecheck e@(DOp2 n l r) = do
     (lt, l') <- typecheck l
     (rt, r') <- typecheck r
-    zt <- case lookup n builtinOp2 of
-      Nothing -> gErr $ "Unknown binary operator\n" ++ (render $ pp n)
-      Just (SFun (STuple xy) z)
-        | [x, y] <- xy , x == lt && y == rt -> pure z
-        | otherwise -> gErr $ "Type error in op\n" ++ (render $ pp e)
-      _ -> gErr $ "Can't make sense of binary operator type\n" ++ (render $ pp e)
+    zt <- case builtinSigs builtinOp2 n of
+      [] -> gErr $ "Unknown binary operator\n" ++ (render $ pp n)
+      sigs -> case [z | SFun (STuple [x, y]) z <- sigs, x == lt, y == rt] of
+        (z:_) -> pure z
+        [] -> gErr $ "Type error in op\n" ++ (render $ pp e)
     pure (zt, DOp2 n l' r')
   typecheck e@(DVar n) = do
     d <- gets dCtx

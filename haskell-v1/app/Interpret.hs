@@ -61,6 +61,7 @@ d2expOp1 denv n a = do
   va <- d2expEvaluate a denv
   case va of
     DValInt i -> case n of
+      ("+", _) -> pure (DValInt i)
       ("-", _) -> pure (DValInt (i * (-1)))
       _ -> gErr $ "Unknown unary operator " ++ (render $ pp n)
     _ -> gErr $ "Operator " ++ (render $ pp n) ++ " expects an integer argument"
@@ -69,22 +70,35 @@ d2expOp2 :: DEnv -> DName -> (DExp Name) -> (DExp Name) -> M DVal
 d2expOp2 denv n a b = do
   va <- d2expEvaluate a denv
   vb <- d2expEvaluate b denv
-  case (va, vb) of
-    (DValInt x, DValInt y) -> d2intOp2 n x y
-    _ -> gErr $ "Operator " ++ (render $ pp n) ++ " expects integer arguments"
+  case n of
+    ("==", _) -> d2primEq n False va vb
+    ("!=", _) -> d2primEq n True va vb
+    _ -> case (va, vb) of
+      (DValInt x, DValInt y) -> d2intOp2 n x y
+      _ -> gErr $ "Operator " ++ (render $ pp n) ++ " expects integer arguments"
+
+d2primEq :: DName -> Bool -> DVal -> DVal -> M DVal
+d2primEq n negated va vb = case (va, vb) of
+  (DValInt x, DValInt y) -> pure (DValBtf (same x y))
+  (DValBtf x, DValBtf y) -> pure (DValBtf (same x y))
+  (DValStr x, DValStr y) -> pure (DValBtf (same x y))
+  _ -> gErr $ "Operator " ++ (render $ pp n) ++
+              " requires operands of the same primitive type"
+  where same x y = if negated then x /= y else x == y
 
 d2intOp2 :: DName -> Int -> Int -> M DVal
 d2intOp2 n x y = case n of
   ("+",_) -> pure (DValInt (x + y))
   ("-",_) -> pure (DValInt (x - y))
   ("*",_) -> pure (DValInt (x * y))
+  ("/",_) -> if y == 0 then zeroErr else pure (DValInt (x `div` y))
+  ("%",_) -> if y == 0 then zeroErr else pure (DValInt (x `mod` y))
   ("<",_) -> pure (DValBtf (x < y))
   (">",_) -> pure (DValBtf (x > y))
   ("<=",_) -> pure (DValBtf (x <= y))
   (">=",_) -> pure (DValBtf (x >= y))
-  ("==",_) -> pure (DValBtf (x == y))
-  ("!=",_) -> pure (DValBtf (x /= y))
   _ -> gErr $ "Unknown binary operator " ++ (render $ pp n)
+  where zeroErr = gErr "Division or modulo by zero"
 
 d2expApp :: DEnv -> (DExp Name) -> (DExp Name) -> M DVal
 d2expApp denv f a = do
