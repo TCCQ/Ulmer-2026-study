@@ -2,7 +2,6 @@ module Ast.Util where
 
 import Ast.Types
 import Ast.MMonad
-import Ast.MError
 
 import Control.Monad (foldM)
 import Data.List (nub)
@@ -75,10 +74,16 @@ sMerge ls rs = do
   pure $ M.union ls rs
   -- This is a bad implemention of this, slow and unclear. Maybe write with unionWith and explicit join after?
 
-{- | Perform subsitution recursively by walking the dexp and applying to
-   the contained sexps.
+{- | Perform type subsitution recursively by walking the dexp and
+   applying to the contained sexps.
 -}
 sSubstD :: (DExp Name) -> (Subst Name) -> TM s r (DExp Name)
+sSubstD e@(DInt _) _ = pure e
+sSubstD e@(DBool _) _ = pure e
+sSubstD e@(DStr _) _ = pure e
+sSubstD (DOp1 n a) ctx = DOp1 n <$> sSubstD a ctx
+sSubstD (DOp2 n a b) ctx = DOp2 n <$> sSubstD a ctx <*> sSubstD b ctx
+sSubstD e@(DVar _) _ = pure e
 sSubstD (DLam (n,t) b) ctx = do
   t' <- sSubst t ctx
   b' <- sSubstD b ctx
@@ -88,16 +93,31 @@ sSubstD (DFix n (a,at) b t) ctx = do
   t' <- sSubst t ctx
   b' <- sSubstD b ctx
   pure $ DFix n (a,at') b' t'
-sSubstD (DOp1 n a) ctx = DOp1 n <$> sSubstD a ctx
-sSubstD (DOp2 n a b) ctx = DOp2 n <$> sSubstD a ctx <*> sSubstD b ctx
 sSubstD (DApp a b) ctx = DApp <$> sSubstD a ctx <*> sSubstD b ctx
 sSubstD (DIf c a b) ctx = DIf <$> sSubstD c ctx <*> sSubstD a ctx <*> sSubstD b ctx
 sSubstD (DTuple ss) ctx = DTuple <$> mapM (\x -> sSubstD x ctx) ss
 sSubstD (DProj i a) ctx = DProj i <$> sSubstD a ctx
+sSubstD (DLet ds mb) ctx = do
+  ds' <- mapM (flip sSubstDecl ctx) ds
+  mb' <- traverse (flip sSubstD ctx) mb
+  pure (DLet ds' mb')
 sSubstD (DTapp n ts) ctx = do
   ts' <- mapM (flip sSubst ctx) ts
   pure $ DTapp n ts'
-sSubstD e _ = pure e
+
+sSubstDecl :: DDecl Name -> Subst Name -> TM s r (DDecl Name)
+sSubstDecl (DBind n e) ctx = DBind n <$> sSubstD e ctx
+sSubstDecl (DTDec (TDecl (n, ns, t))) ctx = do
+  t' <- sSubst t ctx
+  pure (DTDec (TDecl (n, ns, t')))
+sSubstDecl (DImpl (TImpl (n, ns, b, sa, tag))) ctx = do
+  sa' <- mapM (flip sSubst ctx) sa
+  b' <- sSubstD b ctx
+  pure (DImpl (TImpl (n, ns, b', sa', tag)))
+sSubstDecl (DLocal ds bs) ctx = do
+  ds' <- mapM (flip sSubstDecl ctx) ds
+  bs' <- mapM (flip sSubstDecl ctx) bs
+  pure (DLocal ds' bs')
 
 freeS :: Eq n => (SExp n) -> [n]
 freeS (SCon _ as) = nub $ as >>= freeS
