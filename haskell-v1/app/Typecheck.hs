@@ -176,7 +176,7 @@ insertDecl (_, (DTDec dec@(TDecl (n, _, _)))) act =
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
 insertDecl (_, (DImpl impl@(TImpl (n, _, _, _, _)))) act =
-  let helper1 x = x { impls = M.insertWith (++) n [impl] (impls x) }
+  let helper1 x = x { impls = M.insertWith (++) n [(impl, x)] (impls x) }
       helper2 x = x { tCtx = helper1 (tCtx x) }
   in extend helper2 act
 insertDecl (_, (DLocal binds decls)) act = do

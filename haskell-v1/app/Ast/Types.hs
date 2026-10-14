@@ -21,7 +21,7 @@ data SCtx n = SCtx (M.Map SName (SExp n))
 
 data TCtx n = TCtx
   { declared :: M.Map n (TDecl n)
-  , impls :: M.Map n [TImpl n]
+  , impls :: M.Map n [(TImpl n, TCtx n)]
   } deriving (Show)
 
 type Subst n = M.Map n (SExp n)

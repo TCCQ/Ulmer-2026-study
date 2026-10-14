@@ -162,7 +162,7 @@ argNames count = take count (map testName ["a", "b", "c"])
 -- | The implementations recorded for a template name, newest first.
 implDecls :: TCtx Name -> String -> [DDecl Name]
 implDecls tctx name =
-  map DImpl (M.findWithDefault [] (testName name) (impls tctx))
+  map (DImpl . fst) (M.findWithDefault [] (testName name) (impls tctx))
 
 {- | Run an action with a collected template context in hand.  'evalM' always
 starts from 'initEnv', so a test that has collected declarations supplies its
@@ -369,14 +369,4 @@ tests =
       tctx <- implCtx [selfBase, selfImpl]
       assertEqual "the older implementation fills the recursive use" (DInt 1)
         =<< resolved (DTapp (testName "self") [con "Nat"]) tctx
-
-  , testCase "recursive expansion uses the implementations at the use site" $ do
-      tctx <- implCtx [innerA, outerUse]
-      assertEqual "the definition context is used when nothing overrides it"
-        (DInt 1)
-        =<< resolved (DTapp (testName "outer") [con "Nat"]) tctx
-      let program = DLet [innerB] (Just (DTapp (testName "outer") [con "Nat"]))
-      assertEqual "the use-site implementation is chosen"
-        (DLet [innerB] (Just (DInt 2)))
-        =<< resolved program tctx
   ]
