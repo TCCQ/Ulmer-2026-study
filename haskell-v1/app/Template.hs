@@ -12,6 +12,11 @@ import Ast
 blacklist :: Int -> M a -> M a
 blacklist tag act = extend (\(a,b,bl) -> (a,b,tag:bl)) act
 
+applySnapshot :: TCtx Name -> M a -> M a
+applySnapshot snapshot act = do
+  extend (\(s,_,bl) -> (s,snapshot, bl)) act
+
+
 chooseImpl :: TName -> [(SExp Name)] -> M ((DExp Name), Int)
 chooseImpl n args = do
   (tctx, bl) <- gets (\(_,x,bl) -> (x,bl))
@@ -19,8 +24,8 @@ chooseImpl n args = do
     (Nothing,_) -> gErr $ "Didn't find any implementation for " ++ show n
     (_,Nothing) -> gErr $ "Didn't find any declartion for " ++ show n
     (Just y, Just d) -> pure $ (y, d)
-  let applySuitable :: (TImpl Name) -> M (Maybe ((DExp Name), Int))
-      applySuitable (TImpl (n', _, body, sBinds, tag))
+  let applySuitable :: (TImpl Name) -> TCtx Name -> M (Maybe ((DExp Name), Int))
+      applySuitable (TImpl (n', _, body, sBinds, tag)) snapshot
         | n == n' && not (elem tag bl) = do
             let helper :: (SExp Name) -> (SName, (SExp Name)) -> M (Maybe (SName, (Subst Name)))
                 helper useArg (vName, implArg) = do
@@ -41,14 +46,14 @@ chooseImpl n args = do
                 -- think is correct but not super clear
 
                 expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
-                  (blacklist tag $ templateExpand body')
+                  (blacklist tag $ applySnapshot snapshot $ templateExpand body')
                 pure $ Just (expanded, tag)
         | n == n' = {- blacklisted -} pure Nothing
         | otherwise =
           gErr $ "Timpl context on " ++ show n ++ " points to impl with name " ++ show n'
-  let thread acc impl = do
+  let thread acc (impl, snapshot) = do
         acc' <- acc
-        x <- applySuitable impl
+        x <- applySuitable impl snapshot
         pure $ acc' <|> x
   mExpansion <- foldl' thread (pure Nothing) impls
   case mExpansion of
@@ -63,7 +68,7 @@ insertDecl (DImpl d@(TImpl (name, _, _, _, _))) act = do
   (s@(SCtx sctx), tctx, bl) <- get
   ctx' <- case (M.lookup name sctx, M.lookup name (declared tctx)) of
     (Nothing, Just _) ->
-      let impls' = M.insertWith (++) name [d] (impls tctx)
+      let impls' = M.insertWith (++) name [(d, tctx)] (impls tctx)
       in pure (s, tctx { impls = impls' }, bl)
     (Just _, _) -> gErr $ "Name " ++ show name ++ " appears in both tctx and sctx."
     (_, Nothing) -> gErr $ "Name " ++ show name ++ " implemented but not declared"
