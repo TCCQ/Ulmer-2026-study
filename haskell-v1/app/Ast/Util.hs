@@ -171,12 +171,14 @@ resNamesD =
   [ ("+", 0)
   , ("-", 1)
   , ("*", 2)
-  , ("<", 3)
-  , (">", 4)
-  , ("<=", 5)
-  , (">=", 6)
-  , ("==", 7)
-  , ("!=", 8)
+  , ("/", 3)
+  , ("%", 4)
+  , ("<", 5)
+  , (">", 6)
+  , ("<=", 7)
+  , (">=", 8)
+  , ("==", 9)
+  , ("!=", 10)
   ]
 
 resNamesS :: [Name]
@@ -186,17 +188,29 @@ resNamesS =
   , ("String", 11)
   ]
 
+builtinOp1 :: [(DName, (SExp Name))]
+builtinOp1 =
+  [ (("+", 0), SFun intType intType)
+  , (("-", 1), SFun intType intType)
+  ]
+
 builtinOp2 :: [(DName, (SExp Name))]
 builtinOp2 =
   [ (("+", 0),  SFun (STuple [intType , intType]) intType)
   , (("-", 1),  SFun (STuple [intType , intType]) intType)
   , (("*", 2),  SFun (STuple [intType , intType]) intType)
-  , (("<", 3),  SFun (STuple [intType , intType]) boolType)
-  , ((">", 4),  SFun (STuple [intType , intType]) boolType)
-  , (("<=", 5), SFun (STuple [intType , intType]) boolType)
-  , ((">=", 6), SFun (STuple [intType , intType]) boolType)
-  , (("==", 7), SFun (STuple [intType , intType]) boolType)
-  , (("!=", 8), SFun (STuple [intType , intType]) boolType)
+  , (("/", 3),  SFun (STuple [intType , intType]) intType)
+  , (("%", 4),  SFun (STuple [intType , intType]) intType)
+  , (("<", 5),  SFun (STuple [intType , intType]) boolType)
+  , ((">", 6),  SFun (STuple [intType , intType]) boolType)
+  , (("<=", 7), SFun (STuple [intType , intType]) boolType)
+  , ((">=", 8), SFun (STuple [intType , intType]) boolType)
+  , (("==", 9), SFun (STuple [intType , intType]) boolType)
+  , (("==", 9), SFun (STuple [boolType, boolType]) boolType)
+  , (("==", 9), SFun (STuple [stringType, stringType]) boolType)
+  , (("!=", 10), SFun (STuple [intType , intType]) boolType)
+  , (("!=", 10), SFun (STuple [boolType, boolType]) boolType)
+  , (("!=", 10), SFun (STuple [stringType, stringType]) boolType)
   ]
 
 intType :: (SExp Name)

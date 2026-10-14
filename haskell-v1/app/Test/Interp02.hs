@@ -2,10 +2,9 @@
 @contrib/githwxi/FWATS3/srcgen2/tests/test_interp.py@.
 
 Each program is run exactly as srcgen2's @run@ helper does: parse, type-check,
-expand templates, then evaluate.  The cases srcgen2 writes with division,
-modulo, string or boolean equality, custom type constructors or a library file
-have no counterpart in this language and are recorded in
-@haskell-v1/TEST-PARITY.md@.
+expand templates, then evaluate.  The cases srcgen2 writes with custom type
+constructors or a library file have no counterpart in this language and are
+recorded in @haskell-v1/TEST-PARITY.md@.
 -}
 module Test.Interp02 (tests) where
 
@@ -21,19 +20,19 @@ tests =
       assertRun "(42,)" (DValTupl [DValInt 42])
       assertRun "(1,true,\"ok\").2" (DValStr "ok")
       assertRun "2*3+1" (DValInt 7)
+      assertRun "-7 / 3" (DValInt (-3))
+      assertRun "-7 % 3" (DValInt 2)
+      assertRun "+2*3+1" (DValInt 7)
+      assertRun "\"a\" != \"b\"" (DValBtf True)
+      assertRun "false == false" (DValBtf True)
       assertRun "if true then 42 else 43" (DValInt 42)
       assertRun "if false then 1 else 42" (DValInt 42)
       assertRun "let val x = 1 end" (DValTupl [])
       assertRun "val x = 1; val x = x + 2; x" (DValInt 3)
 
-  , testCase "if evaluates only the branch it takes" $
-      -- srcgen2 writes if true then 42 else 1/0.  This language has no
-      -- division, so the branch that must not run is an operator the
-      -- interpreter rejects instead.
-      assertValue "the else branch is not evaluated" (DValInt 42) $
-        d2expEvaluateNil
-          (DIf (DBool True) (DInt 42)
-               (DOp2 (testName "/") (DInt 1) (DInt 0)))
+  , testCase "if evaluates only the branch it takes" $ do
+      assertRun "if true then 42 else 1/0" (DValInt 42)
+      assertRun "if false then 1/0 else 42" (DValInt 42)
 
   , testCase "a lambda captures both environments" $
       assertRun
@@ -172,8 +171,12 @@ tests =
       assertLeft "comparing two tuples" $
         d2expEvaluateNil
           (DOp2 (testName "==") (DTuple [DInt 1]) (DTuple [DInt 1]))
-      assertLeft "an unsupported operator" $
+      assertLeft "dividing by zero" $
         d2expEvaluateNil (DOp2 (testName "/") (DInt 1) (DInt 0))
+      assertLeft "taking a modulo by zero" $
+        d2expEvaluateNil (DOp2 (testName "%") (DInt 1) (DInt 0))
+      assertLeft "projecting a number literal" $
+        d2expEvaluateNil (DProj 0 (DInt 1))
       assertLeft "projecting past the end of a tuple" $
         d2expEvaluateNil (DProj 1 (DTuple [DInt 1]))
       assertLeft "a static application cannot be interpreted" $

@@ -38,25 +38,52 @@ tests =
   , testCase "arithmetic operators have type Int" $
       mapM_ (\op -> assertType ("operator " ++ op) intType $
                        tc (DOp2 (testName op) (DInt 1) (DInt 2)))
-        ["+", "-", "*"]
+        ["+", "-", "*", "/", "%"]
+
+  , testCase "unary operators have type Int" $
+      mapM_ (\op -> assertType ("operator " ++ op) intType $
+                       tc (DOp1 (testName op) (DInt 1)))
+        ["+", "-"]
 
   , testCase "comparison operators have type Bool" $
       mapM_ (\op -> assertType ("operator " ++ op) boolType $
                        tc (DOp2 (testName op) (DInt 1) (DInt 2)))
         ["<", ">", "<=", ">=", "==", "!="]
 
+  , testCase "equality accepts the primitive types" $ do
+      assertType "int equality" boolType $
+        tc (DOp2 (testName "==") (DInt 1) (DInt 2))
+      assertType "bool equality" boolType $
+        tc (DOp2 (testName "!=") (DBool True) (DBool False))
+      assertType "string equality" boolType $
+        tc (DOp2 (testName "==") (DStr "a") (DStr "b"))
+
   , testCase "nested binary operators" $
       assertType "nested arithmetic" intType $
         tc (DOp2 (testName "+")
                  (DOp2 (testName "*") (DInt 2) (DInt 3)) (DInt 1))
 
-  , testCase "binary operator with a wrong operand type is rejected" $
+  , testCase "binary operator with a wrong operand type is rejected" $ do
       assertTypeLeft "adding an int and a bool" $
         tc (DOp2 (testName "+") (DInt 1) (DBool True))
+      assertTypeLeft "comparing an int and a bool" $
+        tc (DOp2 (testName "==") (DInt 1) (DBool True))
+      assertTypeLeft "comparing two functions" $
+        tc (DOp2 (testName "==")
+                 (DLam (testName "x", intType) (DVar (testName "x")))
+                 (DLam (testName "x", intType) (DVar (testName "x"))))
+
+  , testCase "unary operator with a wrong operand type is rejected" $
+      assertTypeLeft "negating a bool" $
+        tc (DOp1 (testName "-") (DBool True))
 
   , testCase "unknown binary operator is rejected" $
       assertTypeLeft "unknown operator" $
         tc (DOp2 (testName "^") (DInt 1) (DInt 2))
+
+  , testCase "unknown unary operator is rejected" $
+      assertTypeLeft "unknown operator" $
+        tc (DOp1 (testName "^") (DInt 1))
 
   , testCase "bound variable takes its binding type" $
       assertType "bound variable" intType $

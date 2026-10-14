@@ -3,9 +3,8 @@
 
 Each program is parsed, bound and type-checked; the body's type is what a
 program-level check answers with, just as @program_tcheck@ does.  The cases
-srcgen2 writes with @list@\/@strm@, division, modulo, unary operators, string or
-boolean equality, or the library file have no counterpart here and are recorded
-in @haskell-v1/TEST-PARITY.md@.
+srcgen2 writes with @list@\/@strm@ or the library file have no counterpart here
+and are recorded in @haskell-v1/TEST-PARITY.md@.
 -}
 module Test.Typecheck02 (tests) where
 
@@ -23,7 +22,10 @@ tests =
       assertSourceType "\"hello\"" stringType
       assertSourceType "true" boolType
       assertSourceType "()" unitType
+      assertSourceType "-7 % +3" intType
       assertSourceType "1 < 2" boolType
+      assertSourceType "false != true" boolType
+      assertSourceType "\"a\" == \"b\"" boolType
       assertSourceType "(lam (x: Int) => x + 1)(2)" intType
 
   , testCase "functions, tuples, recursion and let" $ do
@@ -104,6 +106,7 @@ tests =
             , "1.0"
             , "true + 1"
             , "1 % false"
+            , "-true"
             , "(lam (x: Int) => x) == (lam (x: Int) => x)"
             , "fix f(x: Int): Bool -> Bool => x"
             , "let val x = x in x end"
@@ -130,10 +133,11 @@ tests =
       assertSourceLeft "dec f[a]: a -> a; @f[Int](false)"
 
   , testCase "direct syntax-tree validation" $ do
-      -- An operator that the checker does not know is rejected.
-      let unknown = DOp2 (testName "unknown") (DInt 1) (DInt 2)
-      case evalTT (typecheck unknown) 0 of
-        Left _ -> pure ()
-        Right _ -> ioError . userError $
-          "an unknown binary operator was not rejected"
+      -- Operators that the checker does not know are rejected.
+      let reject e = case evalTT (typecheck e) 0 of
+            Left _ -> pure ()
+            Right _ -> ioError . userError $
+              "an unknown operator was not rejected"
+      reject (DOp2 (testName "unknown") (DInt 1) (DInt 2))
+      reject (DOp1 (testName "unknown") (DInt 1))
   ]
