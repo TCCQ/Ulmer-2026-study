@@ -68,7 +68,7 @@ main = do
     putStrLn $ "\nTypechecked:\n" ++ (render $ pp program)
 
   (nextI, program) <-
-    case evalM (templateExpand program) nextI of
+    case evalM (stripProgram =<< expandProgram program) nextI of
       Left err -> (putStrLn ("Template Error:\n" ++ show err)) >>
         error (show err)
       Right e -> pure e

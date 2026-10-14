@@ -1,5 +1,13 @@
 {-# LANGUAGE FlexibleInstances #-}
-module Template where
+module Template
+  ( expandProgram
+  , stripProgram
+
+  , insertDecl
+  , templateExpand
+  , chooseImpl
+  )
+where
 
 import Control.Monad (zipWithM)
 import Control.Applicative ((<|>))
@@ -35,16 +43,9 @@ chooseImpl n args = do
             case maybeSubsts of
               Nothing -> pure Nothing
               Just substs -> do
-                -- we have a successful match, instantiate
+                {- we have a successful match, instantiate -}
                 totalSubst <- foldr (\s acc -> acc >>= sMerge s) (pure substEmpty) (map snd substs)
                 body' <- sSubstD body totalSubst
-                -- TODO separate two levels of subst. one for any vars
-                -- that are forall-qualified at the impl site. another
-                -- for any vars that are forall-qualified by the top
-                -- level template def, but are points at the impl.
-                -- right now they are thrown in together, which I
-                -- think is correct but not super clear
-
                 expanded <- flip extendMsg ("in resolving template " ++ show n ++ " at " ++ show args) $
                   (blacklist tag $ applySnapshot snapshot $ templateExpand body')
                 pure $ Just (expanded, tag)
@@ -78,15 +79,44 @@ insertDecl _ act = act
 class Expandable d where
   templateExpand :: d -> M d
 
-instance Expandable (DDecl Name) where
-  templateExpand t@(DTDec _) = pure t
-  templateExpand e@(DImpl _) = pure e --don't do any expansion eagerly
-  templateExpand (DBind n e) = DBind n <$> templateExpand e
-  templateExpand (DLocal ds bs) = do
-    -- not mutually recursive
-    ds' <- mapM templateExpand ds
-    bs' <- foldr insertDecl (mapM templateExpand bs) ds'
-    pure $ DLocal ds' bs'
+{-
+Idea is to preserve the ordering of decls, but promote each dbind to
+be visible anywhere any following impl might be visible
+(transitively). Specifically we promote any prefix of dbinds in the
+private block to the enclosing block, keep the subsequent span of
+tdecls/timpls in the private, and push any dbinds in the tail down
+into the public block.
+
+We rely on the tags on names to prevent this visibility promotion from
+affecting any code that should not be able to see it.
+-}
+expandDecl :: DDecl Name -> M [DDecl Name]
+expandDecl t@(DTDec _) = pure [t]
+expandDecl e@(DImpl _) = pure [e] --don't do any expansion eagerly
+expandDecl   (DBind n e) = do
+  x <- DBind n <$> templateExpand e
+  pure [x]
+expandDecl (DLocal ds bs) = do
+  let helper1 [] act = do
+        x <- act
+        pure ([], x)
+      helper1 (d:ds) act = do
+        d' <- expandDecl d
+        (ds', act') <- foldr insertDecl (helper1 ds act) d'
+        pure (d'++ds', act')
+  let helper2 ds act = foldr insertDecl act ds
+  (dse, ()) <- helper1 ds $ pure ()
+  let isLocal (DBind _ _) = True
+      isLocal _ = False
+  let (localPrefix, rest) = span isLocal dse
+  let (privPrefix, maybeLocal) = span (not . isLocal) rest
+  if null maybeLocal
+    then do
+    (bse, ()) <- helper2 privPrefix $ helper1 bs (pure ())
+    pure $ localPrefix ++ [DLocal privPrefix bse]
+    else do
+    l' <- helper2 privPrefix $ expandDecl (DLocal maybeLocal bs)
+    pure $ localPrefix ++ l'
 
 instance Expandable (DExp Name) where
   templateExpand (DInt i) = pure (DInt i)
@@ -110,25 +140,66 @@ instance Expandable (DExp Name) where
     DTuple <$> mapM templateExpand ss
   templateExpand (DProj i a) = DProj i <$> templateExpand a
   templateExpand (DLet ds body) = do
-    -- not mutually recursive: the arms are expanded in the caller's
-    -- context, and only afterwards contribute their impls to it
-    ds' <- mapM templateExpand ds
-    let bodyAction = traverse templateExpand body
-    body' <- foldr insertDecl bodyAction ds'
+    let helper1 [] act = do
+          x <- act
+          pure ([], x)
+        helper1 (d:ds) act = do
+          d' <- expandDecl d
+          (ds', act') <- foldr insertDecl (helper1 ds act) d'
+          pure (d'++ds', act')
+    (ds', body') <- helper1 ds $ traverse templateExpand body
     pure $ DLet ds' body'
   templateExpand (DTapp n ts) =
     fst <$> chooseImpl n ts
 
 instance Expandable (DProgram Name) where
-  templateExpand (DProgram [] body) = DProgram [] <$> templateExpand body
-  templateExpand (DProgram (a:as) body) = do
-    a' <- templateExpand a
-    (DProgram as' body') <- insertDecl a' $ templateExpand (DProgram as body)
-    let binds = [x | Just x <- runtimeDecl <$> (a':as')]
-    pure $ DProgram binds body'
+  templateExpand (DProgram ds body) = do
+    let helper1 [] act = do
+          x <- act
+          pure ([], x)
+        helper1 (d:ds) act = do
+          d' <- expandDecl d
+          (ds', act') <- foldr insertDecl (helper1 ds act) d'
+          pure (d'++ds', act')
+    (ds', body') <- helper1 ds $ templateExpand body
+    pure $ DProgram ds' body'
 
-runtimeDecl :: (DDecl Name) -> Maybe (DDecl Name)
-runtimeDecl x@(DBind _ _) = Just x
-runtimeDecl x@(DLocal _ _) = Just x
-runtimeDecl (DTDec _) = Nothing
-runtimeDecl (DImpl _) = Nothing
+expandProgram :: DProgram Name -> M (DProgram Name)
+expandProgram = templateExpand
+
+-- Stripping Template decls ------------------------------------------
+
+strip :: MonadFail m => DExp Name -> m (DExp Name)
+strip e@(DInt _) = pure e
+strip e@(DBool _) = pure e
+strip e@(DStr _) = pure e
+strip   (DOp1 n r) = DOp1 n <$> strip r
+strip   (DOp2 n l r) = DOp2 n <$> strip l <*> strip r
+strip e@(DVar _) = pure e
+strip   (DLam x b) = DLam x <$> strip b
+strip   (DFix n x b t) = DFix n x <$> strip b <*> pure t
+strip   (DApp f a) = DApp <$> strip f <*> strip a
+strip   (DIf c l r) = DIf <$> strip c <*> strip l <*> strip r
+strip   (DTuple as) = DTuple <$> mapM strip as
+strip   (DProj i r) = DProj i <$> strip r
+strip   (DLet ds mb) = DLet <$> (concat <$> mapM stripDecl ds) <*> traverse strip mb
+strip e@(DTapp _ _) = fail $ "Template use " ++ (rpp e) ++ " not eliminated by expansion"
+
+stripDecl :: MonadFail m => DDecl Name -> m [DDecl Name]
+stripDecl (DTDec _) = pure []
+stripDecl (DImpl _) = pure []
+stripDecl (DBind n rhs) = do
+  rhs' <- strip rhs
+  pure [DBind n rhs']
+stripDecl (DLocal ds bs) = do
+  ds' <- concat <$> mapM stripDecl ds
+  bs' <- concat <$> mapM stripDecl bs
+  if null ds' && null bs'
+    then pure []
+    else pure [DLocal ds' bs']
+
+stripProgram :: MonadFail m => DProgram Name -> m (DProgram Name)
+stripProgram (DProgram ds main) = do
+  ds' <- concat <$> mapM stripDecl ds
+  main' <- strip main
+  pure (DProgram ds' main')
