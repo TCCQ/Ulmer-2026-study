@@ -25,7 +25,7 @@ tests =
   , testCase "tuple evaluates elements and preserves nesting" $ do
       let expression =
             DTuple
-              [ DOp2 "+" (DVar "x") (DInt 1)
+              [ DOp2 (testName "+") (DVar (testName "x")) (DInt 1)
               , DTuple [DStr "nested"]
               ]
           expected =
@@ -34,26 +34,28 @@ tests =
               , DValTupl [DValStr "nested"]
               ]
       assertValue "nested tuple" expected $
-        d2expEvaluate expression [("x", DValInt 10)]
+        d2expEvaluate expression [(testName "x", DValInt 10)]
 
   , testCase "let bindings are sequential and scoped" $ do
-      let original = [("x", DValInt 10)]
+      let original = [(testName "x", DValInt 10)]
           expression =
             DLet
-              [ DBind "x" (DOp2 "+" (DVar "x") (DInt 1))
-              , DBind "y" (DVar "x")
+              [ DBind (testName "x")
+                  (DOp2 (testName "+") (DVar (testName "x")) (DInt 1))
+              , DBind (testName "y") (DVar (testName "x"))
               ]
-              (Just (DVar "y"))
+              (Just (DVar (testName "y")))
       assertValue "body sees the rebound x" (DValInt 11) $
         d2expEvaluate expression original
       assertEqual "original environment untouched"
-        (Just (DValInt 10)) (lookup "x" original)
+        (Just (DValInt 10)) (lookup (testName "x") original)
 
   , testCase "let returned closure retains bindings" $
       assertValue "closure over a let binding" (DValStr "captured") $
         d2expEvaluateNil
-          (DApp (DLet [DBind "x" (DStr "captured")]
-                         (Just (DLam ("unused", anyType) (DVar "x"))))
+          (DApp (DLet [DBind (testName "x") (DStr "captured")]
+                         (Just (DLam (testName "unused", anyType)
+                                     (DVar (testName "x")))))
                 (DInt 0))
 
   , testCase "let without body evaluates declarations" $
@@ -61,29 +63,33 @@ tests =
         d2expEvaluateNil (DLet [] Nothing)
 
   , testCase "binding shadows after evaluating rhs" $ do
-      let original = [("x", DValInt 10)]
+      let original = [(testName "x", DValInt 10)]
       result <- unwrap "evaluating the binding" $
-        d2eclEvaluate (DBind "x" (DOp2 "+" (DVar "x") (DInt 1))) original
-      assertEqual "shadowed binding" (Just (DValInt 11)) (lookup "x" result)
+        d2eclEvaluate (DBind (testName "x")
+                         (DOp2 (testName "+") (DVar (testName "x")) (DInt 1)))
+                      original
+      assertEqual "shadowed binding" (Just (DValInt 11)) (lookup (testName "x") result)
       assertEqual "original environment untouched"
-        (Just (DValInt 10)) (lookup "x" original)
+        (Just (DValInt 10)) (lookup (testName "x") original)
       assertEqual "result extends the original" original (tail result)
 
   , testCase "local exports preserve order and private closures" $ do
-      let original = [("hidden", DValInt 100)]
-          private = [DBind "hidden" (DInt 10)]
+      let original = [(testName "hidden", DValInt 100)]
+          private = [DBind (testName "hidden") (DInt 10)]
           public =
-            [ DBind "f" (DLam ("x", anyType) (DVar "hidden"))
-            , DBind "y" (DVar "hidden")
-            , DBind "y" (DOp2 "+" (DVar "y") (DInt 1))
+            [ DBind (testName "f")
+                (DLam (testName "x", anyType) (DVar (testName "hidden")))
+            , DBind (testName "y") (DVar (testName "hidden"))
+            , DBind (testName "y")
+                (DOp2 (testName "+") (DVar (testName "y")) (DInt 1))
             ]
       result <- unwrap "evaluating the local" $
         d2eclEvaluate (DLocal private public) original
       assertEqual "private binding is not exported"
-        (Just (DValInt 100)) (lookup "hidden" result)
-      assertEqual "latest y wins" (Just (DValInt 11)) (lookup "y" result)
+        (Just (DValInt 100)) (lookup (testName "hidden") result)
+      assertEqual "latest y wins" (Just (DValInt 11)) (lookup (testName "y") result)
       assertValue "closure captured the private binding" (DValInt 10) $
-        d2expEvaluate (DApp (DVar "f") (DInt 0)) result
+        d2expEvaluate (DApp (DVar (testName "f")) (DInt 0)) result
       emptyLocal <- unwrap "evaluating a local with no bindings" $
         d2eclEvaluate (DLocal private []) original
       assertEqual "local with no bindings returns the original"
@@ -95,7 +101,7 @@ tests =
 
   , testCase "unsupported declarations raise" $
       assertLeft "template implementation" $
-        d2eclEvaluate (DImpl (TImpl ("f", (DInt 1), [], 0))) []
+        d2eclEvaluate (DImpl (TImpl (testName "f", [], DInt 1, [], 0))) []
 
   , testCase "string literals preserve contents" $
       mapM_ (\s -> assertValue ("literal " ++ show s) (DValStr s) $
@@ -104,25 +110,29 @@ tests =
 
   , testCase "string argument passes through lambda" $
       assertValue "identity on a string" (DValStr "hello") $
-        d2expEvaluateNil (DApp (DLam ("x", anyType) (DVar "x")) (DStr "hello"))
+        d2expEvaluateNil (DApp (DLam (testName "x", anyType) (DVar (testName "x")))
+                               (DStr "hello"))
 
   , testCase "lambda body uses captured environment" $ do
       closure <- unwrap "building the closure" $
-        d2expEvaluate (DLam ("x", anyType) (DOp2 "+" (DVar "x") (DVar "y")))
-                      [("y", DValInt 10)]
-      let caller = [("f", closure), ("y", DValInt 100)]
+        d2expEvaluate (DLam (testName "x", anyType)
+                            (DOp2 (testName "+")
+                                  (DVar (testName "x")) (DVar (testName "y"))))
+                      [(testName "y", DValInt 10)]
+      let caller = [(testName "f", closure), (testName "y", DValInt 100)]
       assertValue "captured y shadows the caller y" (DValInt 17) $
-        d2expEvaluate (DApp (DVar "f") (DInt 7)) caller
+        d2expEvaluate (DApp (DVar (testName "f")) (DInt 7)) caller
 
   , testCase "fix body can call itself" $
       assertValue "5!" (DValInt 120) $
         d2expEvaluateNil
-          (DApp (DFix "fact" ("n", anyType)
-                        (DIf (DOp2 "==" (DVar "n") (DInt 0))
+          (DApp (DFix (testName "fact") (testName "n", anyType)
+                        (DIf (DOp2 (testName "==") (DVar (testName "n")) (DInt 0))
                              (DInt 1)
-                             (DOp2 "*" (DVar "n")
-                               (DApp (DVar "fact")
-                                     (DOp2 "-" (DVar "n") (DInt 1)))))
+                             (DOp2 (testName "*") (DVar (testName "n"))
+                               (DApp (DVar (testName "fact"))
+                                     (DOp2 (testName "-") (DVar (testName "n"))
+                                           (DInt 1)))))
                         anyType)
                 (DInt 5))
   ]

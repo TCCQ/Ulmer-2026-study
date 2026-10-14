@@ -11,6 +11,7 @@ import Data.List (nub)
 import qualified Data.Map.Lazy as M
 
 import Ast
+import Bind (bindProgram)
 import Interpret
 import Parse (parseWhole)
 import Template
@@ -18,100 +19,113 @@ import Test.Harness
 
 
 -- | A type constructor without arguments, such as Nat or Bool.
-con :: SName -> SExp
-con name = SCon name []
+con :: String -> SExp Name
+con name = SCon (testName name) []
 
 -- | Build Arr(arg1, arg2).
-arr :: SExp -> SExp -> SExp
-arr arg1 arg2 = SCon "Arr" [arg1, arg2]
+arr :: SExp Name -> SExp Name -> SExp Name
+arr arg1 arg2 = SCon (testName "Arr") [arg1, arg2]
 
 -- | An implementation: what it expands to, the argument types it takes, and a
 -- tag.  The tag is written out rather than counted up because two
 -- implementations are the same exactly when their tags are.  The result type is
 -- not stored: the checker derives it from the declaration.
-timpl :: TName -> DExp -> [SExp] -> Int -> DDecl
-timpl name body pats tag = DImpl (TImpl (name, body, pats, tag))
+timpl :: String -> DExp Name -> [SExp Name] -> Int -> DDecl Name
+timpl name body pats tag = DImpl (TImpl (testName name, [], body, pats, tag))
 
 -- | zero@Nat := 0, with a concrete parameter type.
-zeroImpl :: DDecl
+zeroImpl :: DDecl Name
 zeroImpl = timpl "zero" (DInt 0) [con "Nat"] 0
 
 -- | id@a := lam x. x, with a variable parameter type.
-idImpl :: DDecl
-idImpl = timpl "id" (DLam ("x", SVar "a") (DVar "x")) [SVar "a"] 1
+idImpl :: DDecl Name
+idImpl = timpl "id" (DLam (testName "x", SVar (testName "a")) (DVar (testName "x")))
+                   [SVar (testName "a")] 1
 
 -- | pair@a,b := (x, y), which captures x and y.
-pairImpl :: DDecl
-pairImpl = timpl "pair" (DTuple [DVar "x", DVar "y"]) [SVar "a", SVar "b"] 2
+pairImpl :: DDecl Name
+pairImpl = timpl "pair"
+  (DTuple [DVar (testName "x"), DVar (testName "y")])
+  [SVar (testName "a"), SVar (testName "b")] 2
 
 -- | swap@a := (p.1, p.0), which captures p.
-swapImpl :: DDecl
-swapImpl = timpl "swap" (DTuple [DProj 1 (DVar "p"), DProj 0 (DVar "p")])
-                     [SVar "a"] 3
+swapImpl :: DDecl Name
+swapImpl = timpl "swap"
+  (DTuple [DProj 1 (DVar (testName "p")), DProj 0 (DVar (testName "p"))])
+  [SVar (testName "a")] 3
 
 -- | inc@Nat := n + 1, which captures n.
-incImpl :: DDecl
-incImpl = timpl "inc" (DOp2 "+" (DVar "n") (DInt 1)) [con "Nat"] 4
+incImpl :: DDecl Name
+incImpl = timpl "inc"
+  (DOp2 (testName "+") (DVar (testName "n")) (DInt 1)) [con "Nat"] 4
 
 -- | inc2@a := inc@a, which uses another template.
-inc2Impl :: DDecl
-inc2Impl = timpl "inc2" (DTapp "inc" [SVar "a"]) [SVar "a"] 5
+inc2Impl :: DDecl Name
+inc2Impl = timpl "inc2" (DTapp (testName "inc") [SVar (testName "a")])
+               [SVar (testName "a")] 5
 
 -- | inc3@a := inc@a + inc@a, with two nested uses.
-inc3Impl :: DDecl
+inc3Impl :: DDecl Name
 inc3Impl = timpl "inc3"
-  (DOp2 "+" (DTapp "inc" [SVar "a"]) (DTapp "inc" [SVar "a"]))
-  [SVar "a"] 6
+  (DOp2 (testName "+")
+        (DTapp (testName "inc") [SVar (testName "a")])
+        (DTapp (testName "inc") [SVar (testName "a")]))
+  [SVar (testName "a")] 6
 
 -- | pick@a, implemented once for every type and once for Nat alone.
-genericPick, concretePick :: DDecl
-genericPick = timpl "pick" (DVar "generic") [SVar "a"] 7
-concretePick = timpl "pick" (DVar "nat") [con "Nat"] 8
+genericPick, concretePick :: DDecl Name
+genericPick = timpl "pick" (DVar (testName "generic")) [SVar (testName "a")] 7
+concretePick = timpl "pick" (DVar (testName "nat")) [con "Nat"] 8
 
 -- | annot@a := lam x. fix f(n). if n == 0 then x else f(n - 1), whose
 -- annotations all mention the parameter.
-annotBody :: SExp -> DExp
+annotBody :: SExp Name -> DExp Name
 annotBody a =
-  DLam ("x", a)
-    (DFix "f" ("n", a)
-       (DIf (DOp2 "==" (DVar "n") (DInt 0))
-            (DVar "x")
-            (DApp (DVar "f") (DOp2 "-" (DVar "n") (DInt 1))))
+  DLam (testName "x", a)
+    (DFix (testName "f") (testName "n", a)
+       (DIf (DOp2 (testName "==") (DVar (testName "n")) (DInt 0))
+            (DVar (testName "x"))
+            (DApp (DVar (testName "f"))
+                  (DOp2 (testName "-") (DVar (testName "n")) (DInt 1))))
        (SFun a a))
 
-annotImpl :: DDecl
-annotImpl = timpl "annot" (annotBody (SVar "a")) [SVar "a"] 9
+annotImpl :: DDecl Name
+annotImpl = timpl "annot" (annotBody (SVar (testName "a")))
+                          [SVar (testName "a")] 9
 
 -- | keep@a := lam x. lam y. x, where b stands for nothing.
-keepImpl :: DDecl
-keepImpl = timpl "keep" (DLam ("x", SVar "a") (DLam ("y", SVar "b") (DVar "x")))
-                    [SVar "a"] 10
+keepImpl :: DDecl Name
+keepImpl = timpl "keep"
+  (DLam (testName "x", SVar (testName "a"))
+        (DLam (testName "y", SVar (testName "b")) (DVar (testName "x"))))
+  [SVar (testName "a")] 10
 
 -- | fact@a := fix f(n). if n == 0 then 1 else n * f(n - 1).
-factImpl :: DDecl
+factImpl :: DDecl Name
 factImpl = timpl "fact"
-  (DFix "f" ("n", SVar "a")
-     (DIf (DOp2 "==" (DVar "n") (DInt 0))
+  (DFix (testName "f") (testName "n", SVar (testName "a"))
+     (DIf (DOp2 (testName "==") (DVar (testName "n")) (DInt 0))
           (DInt 1)
-          (DOp2 "*" (DVar "n")
-                    (DApp (DVar "f") (DOp2 "-" (DVar "n") (DInt 1)))))
-     (SFun (SVar "a") (SVar "a")))
-  [SVar "a"] 11
+          (DOp2 (testName "*") (DVar (testName "n"))
+                    (DApp (DVar (testName "f"))
+                          (DOp2 (testName "-") (DVar (testName "n")) (DInt 1)))))
+     (SFun (SVar (testName "a")) (SVar (testName "a"))))
+  [SVar (testName "a")] 11
 
-selfImpl :: DDecl
-selfImpl = timpl "self" (DTapp "self" [con "Nat"]) [con "Nat"] 20
+selfImpl :: DDecl Name
+selfImpl = timpl "self" (DTapp (testName "self") [con "Nat"]) [con "Nat"] 20
 
-selfBase :: DDecl
+selfBase :: DDecl Name
 selfBase = timpl "self" (DInt 1) [con "Nat"] 19
 
-innerA :: DDecl
+innerA :: DDecl Name
 innerA = timpl "inner" (DInt 1) [con "Nat"] 30
 
-innerB :: DDecl
+innerB :: DDecl Name
 innerB = timpl "inner" (DInt 2) [con "Nat"] 31
 
-outerUse :: DDecl
-outerUse = timpl "outer" (DTapp "inner" [con "Nat"]) [con "Nat"] 32
+outerUse :: DDecl Name
+outerUse = timpl "outer" (DTapp (testName "inner") [con "Nat"]) [con "Nat"] 32
 
 factorial :: Int -> Int
 factorial n = product [1 .. n]
@@ -129,7 +143,7 @@ not declare itself; only the number of argument names matters, since
 'chooseImpl' matches the implementation's argument types against them
 positionally.
 -}
-implCtx :: [DDecl] -> IO TCtx
+implCtx :: [DDecl Name] -> IO (TCtx Name)
 implCtx decls =
   unwrap "collecting implementations" $
     foldr (\decl act -> insertDecl decl act) (gets (\(_, x, _) -> x))
@@ -138,41 +152,42 @@ implCtx decls =
     declaredNames = [n | DTDec (TDecl (n, _, _)) <- decls]
     tdecls = nub
       [ DTDec (TDecl (n, argNames (length pats), anyType))
-      | DImpl (TImpl (n, _, pats, _)) <- decls
+      | DImpl (TImpl (n, _, _, pats, _)) <- decls
       , n `notElem` declaredNames
       ]
 
-argNames :: Int -> [SName]
-argNames count = take count ["a", "b", "c"]
+argNames :: Int -> [Name]
+argNames count = take count (map testName ["a", "b", "c"])
 
 -- | The implementations recorded for a template name, newest first.
-implDecls :: TCtx -> TName -> [DDecl]
-implDecls tctx name = map DImpl (M.findWithDefault [] name (impls tctx))
+implDecls :: TCtx Name -> String -> [DDecl Name]
+implDecls tctx name =
+  map DImpl (M.findWithDefault [] (testName name) (impls tctx))
 
-{- | Run an action with a collected template context in hand.  'runM' always
+{- | Run an action with a collected template context in hand.  'evalM' always
 starts from 'initEnv', so a test that has collected declarations supplies its
-own here and the environment the action leaves behind is dropped, as 'runM'
+own here and the environment the action leaves behind is dropped, as 'evalM'
 drops it.
 -}
-withCtx :: TCtx -> M a -> M a
+withCtx :: TCtx Name -> M a -> M a
 withCtx tctx act = TM $ \s _ ->
-  case runTM act () (SCtx M.empty, tctx, []) of
+  case runTM act 0 (SCtx M.empty, tctx, []) of
     Left err    -> Left err
     Right (_, a) -> Right (s, a)
 
 -- | 'chooseImpl' answers with the body it chose and the tag it came from.
-chosen :: String -> TName -> [SExp] -> TCtx -> IO (DExp, Int)
+chosen :: String -> String -> [SExp Name] -> TCtx Name -> IO (DExp Name, Int)
 chosen label name args tctx =
-  unwrap label (withCtx tctx (chooseImpl name args))
+  unwrap label (withCtx tctx (chooseImpl (testName name) args))
 
 -- | Replace every template use in the expression.  A use that does not resolve
 -- fails the test here rather than being left in the result.
-resolved :: DExp -> TCtx -> IO DExp
+resolved :: DExp Name -> TCtx Name -> IO (DExp Name)
 resolved dexp tctx =
   unwrap "resolving template uses" (withCtx tctx (templateExpand dexp))
 
 -- | Every template use in the expression, in traversal order.
-templateUses :: DExp -> [DExp]
+templateUses :: DExp Name -> [DExp Name]
 templateUses = go
   where
     go e@(DTapp _ _) = [e]
@@ -188,15 +203,18 @@ templateUses = go
     go _ = []
 
     goDecl (DBind _ e) = go e
-    goDecl (DImpl (TImpl (_, e, _, _))) = go e
+    goDecl (DImpl (TImpl (_, _, e, _, _))) = go e
     goDecl _ = []
 
--- | Parse a program, expand its templates, and evaluate what is left.
+-- | Parse a program, bind its names, expand its templates, and evaluate what is
+-- left.
 runProgram :: [String] -> M DVal
 runProgram source = do
   program <- case parseWhole (unlines source) of
     Left err -> gErr (show err)
-    Right p  -> pure p
+    Right p  -> case bindProgram p of
+      Left err -> gErr (show err)
+      Right (_, p') -> pure p'
   expanded <- templateExpand program
   case expanded of
     DProgram binds body -> d2expLet [] binds (Just body)
@@ -205,7 +223,7 @@ runProgram source = do
 tests :: [TestCase]
 tests =
   [ testCase "collecting keeps only implementations, newest first" $ do
-      tctx <- implCtx [DBind "x" (DInt 0), zeroImpl, idImpl]
+      tctx <- implCtx [DBind (testName "x") (DInt 0), zeroImpl, idImpl]
       assertEqual "the bind records no implementation" []
         (implDecls tctx "x")
       assertEqual "the newer implementation is at the front" [idImpl]
@@ -218,77 +236,84 @@ tests =
       assertEqual "zero@Nat picks the body it was declared with" (DInt 0, 0)
         =<< chosen "choosing zero@Nat" "zero" [con "Nat"] tctx
       assertEqual "zero@Nat resolves to that body" (DInt 0)
-        =<< resolved (DTapp "zero" [con "Nat"]) tctx
+        =<< resolved (DTapp (testName "zero") [con "Nat"]) tctx
       assertLeft "zero@Bool does not match" $
-        withCtx tctx (chooseImpl "zero" [con "Bool"])
+        withCtx tctx (chooseImpl (testName "zero") [con "Bool"])
 
   , testCase "an implementation over a variable matches any type" $ do
       tctx <- implCtx [idImpl]
       forM_ [con "Nat", arr (con "Nat") (con "Bool")] $ \s2t -> do
         assertEqual ("id@" ++ show s2t)
-          (DApp (DLam ("x", s2t) (DVar "x")) (DInt 5))
-          =<< resolved (DApp (DTapp "id" [s2t]) (DInt 5)) tctx
+          (DApp (DLam (testName "x", s2t) (DVar (testName "x"))) (DInt 5))
+          =<< resolved (DApp (DTapp (testName "id") [s2t]) (DInt 5)) tctx
 
   , testCase "the newest implementation for a name wins" $ do
       tctx <- implCtx [genericPick, concretePick]
-      assertEqual "pick@Nat takes the concrete implementation" (DVar "nat", 8)
+      assertEqual "pick@Nat takes the concrete implementation"
+        (DVar (testName "nat"), 8)
         =<< chosen "choosing pick@Nat" "pick" [con "Nat"] tctx
       newestGeneric <- implCtx [concretePick, genericPick]
       forM_ [con "Nat", con "Bool"] $ \s2t ->
         assertEqual ("pick@" ++ show s2t ++ " takes the generic one")
-          (DVar "generic", 7)
+          (DVar (testName "generic"), 7)
           =<< chosen "choosing pick" "pick" [s2t] newestGeneric
 
   , testCase "an implementation that does not match falls through" $ do
       tctx <- implCtx [genericPick, concretePick]
-      assertEqual "pick@Nat takes the concrete implementation" (DVar "nat", 8)
+      assertEqual "pick@Nat takes the concrete implementation"
+        (DVar (testName "nat"), 8)
         =<< chosen "choosing pick@Nat" "pick" [con "Nat"] tctx
       assertEqual "pick@Bool falls back to the older generic implementation"
-        (DVar "generic", 7)
+        (DVar (testName "generic"), 7)
         =<< chosen "choosing pick@Bool" "pick" [con "Bool"] tctx
 
   , testCase "a use of an unknown template is unresolved" $ do
       tctx <- implCtx [idImpl]
       assertLeft "no implementation is found for the name" $
-        withCtx tctx (chooseImpl "missing" [con "Nat"])
+        withCtx tctx (chooseImpl (testName "missing") [con "Nat"])
       assertLeft "expanding an unknown use fails" $
-        withCtx tctx (templateExpand (DTapp "missing" [con "Nat"]))
+        withCtx tctx (templateExpand (DTapp (testName "missing") [con "Nat"]))
 
   , testCase "expansion substitutes into the annotations of the body" $ do
       tctx <- implCtx [annotImpl]
       forM_ [con "Nat", arr (con "Nat") (con "Bool")] $ \s2t ->
         assertEqual ("annot@" ++ show s2t) (annotBody s2t)
-          =<< resolved (DTapp "annot" [s2t]) tctx
+          =<< resolved (DTapp (testName "annot") [s2t]) tctx
 
   , testCase "a type variable nothing binds is left alone" $ do
       tctx <- implCtx [keepImpl]
       assertEqual "the unbound b survives"
-        (DLam ("x", con "Nat") (DLam ("y", SVar "b") (DVar "x")))
-        =<< resolved (DTapp "keep" [con "Nat"]) tctx
+        (DLam (testName "x", con "Nat")
+              (DLam (testName "y", SVar (testName "b")) (DVar (testName "x"))))
+        =<< resolved (DTapp (testName "keep") [con "Nat"]) tctx
 
   , testCase "a use inside a template is expanded too" $ do
       tctx <- implCtx [incImpl, inc2Impl]
-      let use = DApp (DTapp "inc2" [con "Nat"]) (DVar "n")
+      let use = DApp (DTapp (testName "inc2") [con "Nat"]) (DVar (testName "n"))
       result <- resolved use tctx
       assertEqual "no template uses are left" [] (templateUses result)
       assertEqual "inc2 expands through inc"
-        (DApp (DOp2 "+" (DVar "n") (DInt 1)) (DVar "n")) result
+        (DApp (DOp2 (testName "+") (DVar (testName "n")) (DInt 1))
+              (DVar (testName "n"))) result
 
   , testCase "an implementation declared in a let reaches its own body" $ do
       let nat = con "Nat"
           -- let tdecl inc<'a> Nat ; impl inc<Nat> n + 1
           -- in inc<Nat>(1) end
           program = DLet
-            [ DTDec (TDecl ("inc", ["a"], nat))
-            , DImpl (TImpl ("inc", (DOp2 "+" (DVar "n") (DInt 1)), [nat], 12))
+            [ DTDec (TDecl (testName "inc", [testName "a"], nat))
+            , DImpl (TImpl (testName "inc", []
+                           , DOp2 (testName "+") (DVar (testName "n")) (DInt 1)
+                           , [nat], 12))
             ]
-            (Just (DApp (DTapp "inc" [nat]) (DInt 1)))
+            (Just (DApp (DTapp (testName "inc") [nat]) (DInt 1)))
       result <- unwrap "expanding the let" (templateExpand program)
       assertEqual "the use in the body was replaced" []
         (templateUses result)
 
   , testCase "an expression with no template uses is left alone" $ do
-      let expression = DOp2 "+" (DVar "n") (DInt 1)
+      let expression =
+            DOp2 (testName "+") (DVar (testName "n")) (DInt 1)
       assertEqual "an unchanged expression is rebuilt as itself" expression
         =<< resolved expression emptyTCtx
 
@@ -298,11 +323,11 @@ tests =
           -- let x = 1; y = "hello"; p = pair@[Nat,Str]
           -- in swap@[Arr(Nat,Str)] end
           program = DLet
-            [ DBind "x" (DInt 1)
-            , DBind "y" (DStr "hello")
-            , DBind "p" (DTapp "pair" [con "Nat", text])
+            [ DBind (testName "x") (DInt 1)
+            , DBind (testName "y") (DStr "hello")
+            , DBind (testName "p") (DTapp (testName "pair") [con "Nat", text])
             ]
-            (Just (DTapp "swap" [arr (con "Nat") text]))
+            (Just (DTapp (testName "swap") [arr (con "Nat") text]))
       result <- resolved program tctx
       assertValue "the swapped pair evaluates"
         (DValTupl [DValStr "hello", DValInt 1])
@@ -311,7 +336,7 @@ tests =
   , testCase "a recursive template evaluates" $ do
       tctx <- implCtx [factImpl]
       forM_ [0, 1, 2, 5, 10 :: Int] $ \n -> do
-        result <- resolved (DApp (DTapp "fact" [con "Nat"]) (DInt n)) tctx
+        result <- resolved (DApp (DTapp (testName "fact") [con "Nat"]) (DInt n)) tctx
         assertValue ("fact " ++ show n) (DValInt (factorial n))
           (d2expEvaluateNil result)
 
@@ -321,36 +346,36 @@ tests =
       -- twice
       forM_ [("inc2", 1), ("inc3", 2)] $ \(name, times) ->
         forM_ [0, 4, 10 :: Int] $ \n -> do
-          let program = DLet [DBind "n" (DInt n)]
-                         (Just (DTapp name [con "Nat"]))
+          let program = DLet [DBind (testName "n") (DInt n)]
+                         (Just (DTapp (testName name) [con "Nat"]))
           result <- resolved program tctx
           assertValue (name ++ " at " ++ show n) (DValInt (times * (n + 1)))
             (d2expEvaluateNil result)
 
   , testCase "a program with a template parses, expands and evaluates" $
-      assertValue "twice@Nat applied to 20" (DValInt 21) $
+      assertValue "twice@Int applied to 20" (DValInt 21) $
         runProgram
           [ "dec twice[a]: (a, a) -> a;"
-          , "val inc = lam (n : Nat) => n + 1;"
-          , "imp twice[Nat] = inc;"
-          , "@twice[Nat](20)"
+          , "val inc = lam (n : Int) => n + 1;"
+          , "imp twice[Int] = inc;"
+          , "@twice[Int](20)"
           ]
   , testCase "a self-recursive implementation is blocked by the blacklist" $ do
       tctx <- implCtx [selfImpl]
       assertLeft "expanding the self use fails" $
-        withCtx tctx (templateExpand (DTapp "self" [con "Nat"]))
+        withCtx tctx (templateExpand (DTapp (testName "self") [con "Nat"]))
 
   , testCase "the blacklist only blocks the implementation that was chosen" $ do
       tctx <- implCtx [selfBase, selfImpl]
       assertEqual "the older implementation fills the recursive use" (DInt 1)
-        =<< resolved (DTapp "self" [con "Nat"]) tctx
+        =<< resolved (DTapp (testName "self") [con "Nat"]) tctx
 
   , testCase "recursive expansion uses the implementations at the use site" $ do
       tctx <- implCtx [innerA, outerUse]
       assertEqual "the definition context is used when nothing overrides it"
         (DInt 1)
-        =<< resolved (DTapp "outer" [con "Nat"]) tctx
-      let program = DLet [innerB] (Just (DTapp "outer" [con "Nat"]))
+        =<< resolved (DTapp (testName "outer") [con "Nat"]) tctx
+      let program = DLet [innerB] (Just (DTapp (testName "outer") [con "Nat"]))
       assertEqual "the use-site implementation is chosen"
         (DLet [innerB] (Just (DInt 2)))
         =<< resolved program tctx

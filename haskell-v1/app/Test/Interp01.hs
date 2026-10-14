@@ -4,29 +4,32 @@ import Ast
 import Interpret
 import Test.Harness
 
-factorialLoop :: DExp
+factorialLoop :: DExp Name
 factorialLoop =
-  DFix "loop" ("n", anyType)
-    (DLam ("acc", anyType)
-      (DIf (DOp2 "==" (DVar "n") (DInt 0))
-           (DVar "acc")
-           (DApp (DApp (DVar "loop") (DOp2 "-" (DVar "n") (DInt 1)))
-                 (DOp2 "*" (DVar "n") (DVar "acc")))))
+  DFix (testName "loop") (testName "n", anyType)
+    (DLam (testName "acc", anyType)
+      (DIf (DOp2 (testName "==") (DVar (testName "n")) (DInt 0))
+           (DVar (testName "acc"))
+           (DApp (DApp (DVar (testName "loop"))
+                       (DOp2 (testName "-") (DVar (testName "n")) (DInt 1)))
+                 (DOp2 (testName "*") (DVar (testName "n"))
+                       (DVar (testName "acc"))))))
     anyType
 
-tuple3 :: DExp -> DExp -> DExp -> DExp
+tuple3 :: DExp Name -> DExp Name -> DExp Name -> DExp Name
 tuple3 first second third = DTuple [first, second, third]
 
-fibonacciLoop :: DExp
+fibonacciLoop :: DExp Name
 fibonacciLoop =
-  DFix "fibo" ("state", anyType)
-    (DIf (DOp2 "==" n (DInt 0))
+  DFix (testName "fibo") (testName "state", anyType)
+    (DIf (DOp2 (testName "==") n (DInt 0))
          a
-         (DApp (DVar "fibo")
-               (tuple3 (DOp2 "-" n (DInt 1)) b (DOp2 "+" a b))))
+         (DApp (DVar (testName "fibo"))
+               (tuple3 (DOp2 (testName "-") n (DInt 1)) b
+                       (DOp2 (testName "+") a b))))
     anyType
   where
-    state = DVar "state"
+    state = DVar (testName "state")
     n = DProj 0 state
     a = DProj 1 state
     b = DProj 2 state
@@ -39,12 +42,12 @@ tests =
   [ testCase "fibonacci with let bindings" $
       assertValue "fib 10" (DValInt 55) $
         d2expEvaluateNil
-          (DLet [ DBind "n" (DInt 10)
-                , DBind "fib" fibonacciLoop
-                , DBind "initial"
-                    (tuple3 (DVar "n") (DInt 0) (DInt 1))
+          (DLet [ DBind (testName "n") (DInt 10)
+                , DBind (testName "fib") fibonacciLoop
+                , DBind (testName "initial")
+                    (tuple3 (DVar (testName "n")) (DInt 0) (DInt 1))
                 ]
-                (Just (DApp (DVar "fib") (DVar "initial"))))
+                (Just (DApp (DVar (testName "fib")) (DVar (testName "initial")))))
 
   , testCase "fibonacci" $
       mapM_ (\(n, expected) ->

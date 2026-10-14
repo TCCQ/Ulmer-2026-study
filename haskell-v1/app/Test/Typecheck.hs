@@ -4,233 +4,250 @@ import Ast
 import Typecheck
 import Test.Harness
 
-assertType :: String -> SExp -> TT (SExp, a) -> IO ()
+assertType :: String -> SExp Name -> TT (SExp Name, a) -> IO ()
 assertType label expected result =
-  case runTT result of
-    Right (actual, _) -> assertEqual label expected actual
+  case evalTT result 0 of
+    Right (_, (actual, _)) -> assertEqual label expected actual
     Left e -> ioError . userError $ label ++ ": unexpected error\n" ++ show e
 
 assertTypeLeft :: String -> TT a -> IO ()
 assertTypeLeft label result =
-  case runTT result of
+  case evalTT result 0 of
     Left _ -> pure ()
     Right _ -> ioError . userError $ label ++ ": expected an error, but succeeded"
+
+-- | Typecheck an expression.  Pinning the name parameter here keeps GHC from
+-- having to guess it for the tests whose expressions mention no names.
+tc :: DExp Name -> TT (SExp Name, DExp Name)
+tc = typecheck
 
 tests :: [TestCase]
 tests =
   [ testCase "integer literal has type Int" $
       assertType "int literal" intType $
-        typecheck (DInt 1)
+        tc (DInt 1)
 
   , testCase "boolean literal has type Bool" $
       assertType "bool literal" boolType $
-        typecheck (DBool True)
+        tc (DBool True)
 
   , testCase "string literal has type String" $
       assertType "string literal" stringType $
-        typecheck (DStr "hello")
+        tc (DStr "hello")
 
   , testCase "arithmetic operators have type Int" $
       mapM_ (\op -> assertType ("operator " ++ op) intType $
-                       typecheck (DOp2 op (DInt 1) (DInt 2)))
+                       tc (DOp2 (testName op) (DInt 1) (DInt 2)))
         ["+", "-", "*"]
 
   , testCase "comparison operators have type Bool" $
       mapM_ (\op -> assertType ("operator " ++ op) boolType $
-                       typecheck (DOp2 op (DInt 1) (DInt 2)))
+                       tc (DOp2 (testName op) (DInt 1) (DInt 2)))
         ["<", ">", "<=", ">=", "==", "!="]
 
   , testCase "nested binary operators" $
       assertType "nested arithmetic" intType $
-        typecheck (DOp2 "+" (DOp2 "*" (DInt 2) (DInt 3)) (DInt 1))
+        tc (DOp2 (testName "+")
+                 (DOp2 (testName "*") (DInt 2) (DInt 3)) (DInt 1))
 
   , testCase "binary operator with a wrong operand type is rejected" $
       assertTypeLeft "adding an int and a bool" $
-        typecheck (DOp2 "+" (DInt 1) (DBool True))
+        tc (DOp2 (testName "+") (DInt 1) (DBool True))
 
   , testCase "unknown binary operator is rejected" $
       assertTypeLeft "unknown operator" $
-        typecheck (DOp2 "^" (DInt 1) (DInt 2))
+        tc (DOp2 (testName "^") (DInt 1) (DInt 2))
 
   , testCase "bound variable takes its binding type" $
       assertType "bound variable" intType $
-        extend (insertName "x" intType) (typecheck (DVar "x"))
+        extend (insertName (testName "x") intType) (tc (DVar (testName "x")))
 
   , testCase "unbound variable is rejected" $
       assertTypeLeft "unbound variable" $
-        typecheck (DVar "missing")
+        tc (DVar (testName "missing"))
 
   , testCase "lambda has a function type" $ do
       assertType "identity lambda" (SFun intType intType) $
-        typecheck (DLam ("x", intType) (DVar "x"))
+        tc (DLam (testName "x", intType) (DVar (testName "x")))
       assertType "constant lambda" (SFun intType stringType) $
-        typecheck (DLam ("x", intType) (DStr "ignored"))
+        tc (DLam (testName "x", intType) (DStr "ignored"))
 
   , testCase "lambda body type errors are rejected" $
       assertTypeLeft "lambda body fails" $
-        typecheck (DLam ("x", intType) (DOp2 "+" (DVar "x") (DStr "a")))
+        tc (DLam (testName "x", intType)
+             (DOp2 (testName "+") (DVar (testName "x")) (DStr "a")))
 
   , testCase "lambda body cannot see unknown names" $
       assertTypeLeft "lambda body names an unknown" $
-        typecheck (DLam ("x", intType) (DVar "y"))
+        tc (DLam (testName "x", intType) (DVar (testName "y")))
 
   , testCase "fix has its declared function type" $
       assertType "recursive factorial" (SFun intType intType) $
-        typecheck
-          (DFix "f" ("n", intType)
-             (DIf (DOp2 "==" (DVar "n") (DInt 0))
+        tc
+          (DFix (testName "f") (testName "n", intType)
+             (DIf (DOp2 (testName "==") (DVar (testName "n")) (DInt 0))
                   (DInt 1)
-                  (DOp2 "*" (DVar "n")
-                            (DApp (DVar "f")
-                                  (DOp2 "-" (DVar "n") (DInt 1)))))
+                  (DOp2 (testName "*") (DVar (testName "n"))
+                            (DApp (DVar (testName "f"))
+                                  (DOp2 (testName "-") (DVar (testName "n"))
+                                        (DInt 1)))))
              (SFun intType intType))
 
   , testCase "fix whose declared type is not a function is rejected" $
       assertTypeLeft "fix declared as Int" $
-        typecheck (DFix "f" ("n", intType) (DInt 1) intType)
+        tc (DFix (testName "f") (testName "n", intType) (DInt 1) intType)
 
   , testCase "fix whose body disagrees with its declared type is rejected" $
       assertTypeLeft "fix body is a string" $
-        typecheck (DFix "f" ("n", intType) (DStr "x") (SFun intType intType))
+        tc (DFix (testName "f") (testName "n", intType)
+              (DStr "x") (SFun intType intType))
 
   , testCase "application returns the function result type" $ do
       assertType "identity applied" intType $
-        typecheck (DApp (DLam ("x", intType) (DVar "x")) (DInt 5))
+        tc (DApp (DLam (testName "x", intType) (DVar (testName "x")))
+                 (DInt 5))
       assertType "curried application" (SFun stringType intType) $
-        typecheck
-          (DApp (DLam ("x", intType) (DLam ("y", stringType) (DVar "x")))
+        tc
+          (DApp (DLam (testName "x", intType)
+                  (DLam (testName "y", stringType) (DVar (testName "x"))))
                 (DInt 5))
 
   , testCase "application with the wrong argument type is rejected" $
       assertTypeLeft "int function given a string" $
-        typecheck (DApp (DLam ("x", intType) (DVar "x")) (DStr "a"))
+        tc (DApp (DLam (testName "x", intType) (DVar (testName "x")))
+                 (DStr "a"))
 
   , testCase "application of a non-function is rejected" $
       assertTypeLeft "applying an int" $
-        typecheck (DApp (DInt 1) (DInt 2))
+        tc (DApp (DInt 1) (DInt 2))
 
   , testCase "if returns the branch type" $
       assertType "if over ints" intType $
-        typecheck (DIf (DBool True) (DInt 1) (DInt 2))
+        tc (DIf (DBool True) (DInt 1) (DInt 2))
 
   , testCase "if on a non-boolean is rejected" $
       assertTypeLeft "if over an int condition" $
-        typecheck (DIf (DInt 1) (DInt 1) (DInt 2))
+        tc (DIf (DInt 1) (DInt 1) (DInt 2))
 
   , testCase "if with mismatched branches is rejected" $
       assertTypeLeft "if branches disagree" $
-        typecheck (DIf (DBool True) (DInt 1) (DStr "a"))
+        tc (DIf (DBool True) (DInt 1) (DStr "a"))
 
   , testCase "tuple has the tuple of element types" $
       assertType "mixed tuple" (STuple [intType, boolType, stringType]) $
-        typecheck (DTuple [DInt 1, DBool True, DStr "s"])
+        tc (DTuple [DInt 1, DBool True, DStr "s"])
 
   , testCase "nested tuple has a nested tuple type" $
       assertType "nested tuple" (STuple [intType, STuple [stringType]]) $
-        typecheck (DTuple [DInt 1, DTuple [DStr "s"]])
+        tc (DTuple [DInt 1, DTuple [DStr "s"]])
 
   , testCase "projection selects an element type" $ do
       assertType "first of two" intType $
-        typecheck (DProj 0 (DTuple [DInt 1, DStr "s"]))
+        tc (DProj 0 (DTuple [DInt 1, DStr "s"]))
       assertType "second of two" stringType $
-        typecheck (DProj 1 (DTuple [DInt 1, DStr "s"]))
+        tc (DProj 1 (DTuple [DInt 1, DStr "s"]))
 
   , testCase "projection on a non-tuple is rejected" $
       assertTypeLeft "projecting an int" $
-        typecheck (DProj 0 (DInt 1))
+        tc (DProj 0 (DInt 1))
 
   , testCase "projection past the tuple is rejected" $
       assertTypeLeft "projecting past the end" $
-        typecheck (DProj 5 (DTuple [DInt 1, DStr "s"]))
+        tc (DProj 5 (DTuple [DInt 1, DStr "s"]))
 
   , testCase "let returns the body type" $
       assertType "body is a string" stringType $
-        typecheck (DLet [DBind "x" (DInt 1)] (Just (DStr "s")))
+        tc (DLet [DBind (testName "x") (DInt 1)] (Just (DStr "s")))
 
   , testCase "let without a body is the unit type" $ do
       assertType "bare declarations" unitType $
-        typecheck (DLet [DBind "x" (DInt 1)] Nothing)
+        tc (DLet [DBind (testName "x") (DInt 1)] Nothing)
       assertType "empty let" unitType $
-        typecheck (DLet [] Nothing)
+        tc (DLet [] Nothing)
 
   , testCase "let with no declarations returns the body type" $
       assertType "empty declarations" intType $
-        typecheck (DLet [] (Just (DInt 1)))
+        tc (DLet [] (Just (DInt 1)))
 
   , testCase "let bindings are visible to later bindings and the body" $
       assertType "sequential bindings" intType $
-        typecheck (DLet [ DBind "x" (DInt 1)
-                        , DBind "y" (DVar "x")
-                        ]
-                        (Just (DVar "y")))
+        tc (DLet [ DBind (testName "x") (DInt 1)
+                 , DBind (testName "y") (DVar (testName "x"))
+                 ]
+                 (Just (DVar (testName "y"))))
 
   , testCase "let binding shadows an earlier binding" $
       assertType "shadowed binding" stringType $
-        typecheck (DLet [ DBind "x" (DInt 1)
-                        , DBind "x" (DStr "s")
-                        ]
-                        (Just (DVar "x")))
+        tc (DLet [ DBind (testName "x") (DInt 1)
+                 , DBind (testName "x") (DStr "s")
+                 ]
+                 (Just (DVar (testName "x"))))
 
   , testCase "let binding type errors are rejected" $
       assertTypeLeft "binding right-hand side fails" $
-        typecheck (DLet [DBind "x" (DOp2 "+" (DInt 1) (DStr "a"))]
-                       (Just (DVar "x")))
+        tc (DLet [DBind (testName "x")
+                    (DOp2 (testName "+") (DInt 1) (DStr "a"))]
+                (Just (DVar (testName "x"))))
 
   , testCase "bind declaration records its right-hand type" $
       assertType "bind type" intType $
-        typecheck (DBind "x" (DInt 1))
+        typecheck (DBind (testName "x") (DInt 1))
 
   , testCase "template declaration records its return type" $
-      assertType "template return" (SFun (SVar "a") intType) $
-        typecheck (DTDec (TDecl ("f", ["a"], SFun (SVar "a") intType)))
+      assertType "template return" (SFun (SVar (testName "a")) intType) $
+        typecheck (DTDec (TDecl (testName "f", [testName "a"],
+                                 SFun (SVar (testName "a")) intType)))
 
   , testCase "template declaration with a free return variable is rejected" $
       assertTypeLeft "return mentions an unbound variable" $
-        typecheck (DTDec (TDecl ("f", ["a"], SVar "b")))
+        typecheck (DTDec (TDecl (testName "f", [testName "a"], SVar (testName "b"))))
 
   , testCase "matching template redeclaration is allowed" $
       assertType "duplicated declaration" intType $
         typecheck (DProgram
-          [ DTDec (TDecl ("t", [], intType))
-          , DTDec (TDecl ("t", [], intType))
+          [ DTDec (TDecl (testName "t", [], intType))
+          , DTDec (TDecl (testName "t", [], intType))
           ]
           (DInt 0))
 
   , testCase "conflicting template redeclaration is rejected" $
       assertTypeLeft "declarations disagree" $
         typecheck (DProgram
-          [ DTDec (TDecl ("t", [], intType))
-          , DTDec (TDecl ("t", [], stringType))
+          [ DTDec (TDecl (testName "t", [], intType))
+          , DTDec (TDecl (testName "t", [], stringType))
           ]
           (DInt 0))
 
   , testCase "implementation requires a prior declaration" $
       assertTypeLeft "implementation without a declaration" $
-        typecheck (DImpl (TImpl ("f", DInt 1, [], 0)))
+        typecheck (DImpl (TImpl (testName "f", [], DInt 1, [], 0)))
 
   , testCase "implementation matching its declaration typechecks" $
       assertType "zero implementation" intType $
         typecheck (DProgram
-          [ DTDec (TDecl ("zero", [], intType))
-          , DImpl (TImpl ("zero", DInt 0, [], 0))
+          [ DTDec (TDecl (testName "zero", [], intType))
+          , DImpl (TImpl (testName "zero", [], DInt 0, [], 0))
           ]
           (DInt 0))
 
   , testCase "implementation whose body disagrees with its declaration is rejected" $
       assertTypeLeft "body is a string but the declaration says Int" $
         typecheck (DProgram
-          [ DTDec (TDecl ("zero", [], intType))
-          , DImpl (TImpl ("zero", DStr "s", [], 0))
+          [ DTDec (TDecl (testName "zero", [], intType))
+          , DImpl (TImpl (testName "zero", [], DStr "s", [], 0))
           ]
           (DInt 0))
 
   , testCase "generic implementation typechecks" $
       assertType "identity implementation" intType $
         typecheck (DProgram
-          [ DTDec (TDecl ("id", ["a"], SFun (SVar "a") (SVar "a")))
-          , DImpl (TImpl ( "id"
-                         , DLam ("x", SVar "a") (DVar "x")
-                         , [SVar "a"]
+          [ DTDec (TDecl (testName "id", [testName "a"],
+                          SFun (SVar (testName "a")) (SVar (testName "a"))))
+          , DImpl (TImpl ( testName "id"
+                         , [testName "a"]
+                         , DLam (testName "x", SVar (testName "a"))
+                                (DVar (testName "x"))
+                         , [SVar (testName "a")]
                          , 1 ))
           ]
           (DInt 0))
@@ -238,44 +255,45 @@ tests =
   , testCase "type application substitutes into the return type" $ do
       assertType "identity at Int" intType $
         typecheck (DProgram
-          [ DTDec (TDecl ("id", ["a"], SVar "a")) ]
-          (DTapp "id" [intType]))
+          [ DTDec (TDecl (testName "id", [testName "a"], SVar (testName "a"))) ]
+          (DTapp (testName "id") [intType]))
       assertType "pair at Int and String"
         (STuple [intType, stringType]) $
         typecheck (DProgram
-          [ DTDec (TDecl ("pair", ["a", "b"],
-                          STuple [SVar "a", SVar "b"])) ]
-          (DTapp "pair" [intType, stringType]))
+          [ DTDec (TDecl (testName "pair", [testName "a", testName "b"],
+                          STuple [SVar (testName "a"), SVar (testName "b")])) ]
+          (DTapp (testName "pair") [intType, stringType]))
 
   , testCase "type application of an unknown template is rejected" $
       assertTypeLeft "no declaration for the template" $
-        typecheck (DTapp "missing" [intType])
+        tc (DTapp (testName "missing") [intType])
 
   , testCase "program type is the body type" $
       assertType "program body type" stringType $
-        typecheck (DProgram [DBind "x" (DInt 1)] (DStr "s"))
+        typecheck (DProgram [DBind (testName "x") (DInt 1)] (DStr "s"))
 
   , testCase "program declarations are visible to later declarations and the body" $
       assertType "chained bindings" intType $
         typecheck (DProgram
-          [ DBind "x" (DInt 1)
-          , DBind "y" (DVar "x")
+          [ DBind (testName "x") (DInt 1)
+          , DBind (testName "y") (DVar (testName "x"))
           ]
-          (DVar "y"))
+          (DVar (testName "y")))
 
   , testCase "program declaration errors are rejected" $
       assertTypeLeft "bind names an unknown" $
-        typecheck (DProgram [DBind "x" (DVar "missing")] (DInt 0))
+        typecheck (DProgram [DBind (testName "x") (DVar (testName "missing"))] (DInt 0))
 
   , testCase "local exports are visible to the body" $
       assertType "exported binding" intType $
         typecheck (DProgram
-          [ DLocal [DBind "hidden" (DStr "s")] [DBind "exported" (DInt 1)] ]
-          (DVar "exported"))
+          [ DLocal [DBind (testName "hidden") (DStr "s")]
+                   [DBind (testName "exported") (DInt 1)] ]
+          (DVar (testName "exported")))
 
   , testCase "local private bindings do not escape" $
       assertTypeLeft "private binding is not visible" $
         typecheck (DProgram
-          [ DLocal [DBind "hidden" (DInt 1)] [] ]
-          (DVar "hidden"))
+          [ DLocal [DBind (testName "hidden") (DInt 1)] [] ]
+          (DVar (testName "hidden")))
   ]

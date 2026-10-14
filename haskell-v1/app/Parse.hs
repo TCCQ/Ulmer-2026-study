@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
--- | A parser for the level-2 language, producing 'DProgram', 'DDecl', 'DExp'
--- and 'SExp' values.
+-- | A parser for the level-2 language, producing 'DProgram', '(DDecl String)', '(DExp String)'
+-- and '(SExp String)' values.
 --
 -- Two rules hold throughout, and together they give the grammar its shape.
 --
@@ -44,7 +44,7 @@ import Ast
 -- the combinators, and not the 'TM' the rest of the language runs in.
 data PState = PState
   { psTag    :: Int
-  , psStatic :: [SName]
+  , psStatic :: [String]
   }
 
 -- | A parser, polymorphic in the character stream as the worked example is.
@@ -60,7 +60,7 @@ freshTag = do
 
 -- | Run a parser with some extra static variables in scope, restoring the
 -- previous scope afterwards.  Used for the parameter lists of @dec@ and @imp@.
-withStatic :: [SName] -> P s a -> P s a
+withStatic :: [String] -> P s a -> P s a
 withStatic names p = do
   st <- getState
   putState st { psStatic = names ++ psStatic st }
@@ -70,7 +70,7 @@ withStatic names p = do
 
 -- | Whether a name denotes a static variable in the current scope.  Names not
 -- in scope are type constructors.
-inStatic :: SName -> P s Bool
+inStatic :: String -> P s Bool
 inStatic n = elem n . psStatic <$> getState
 
 
@@ -236,24 +236,24 @@ parenthesized item mkTuple = do
             Just y  -> (y :) <$> restItems
 
 -- | A bracketed list of static arguments.
-staticArgs :: Stream s Identity Char => P s [SExp]
+staticArgs :: Stream s Identity Char => P s [(SExp String)]
 staticArgs = commaList "[" "]" parseType
 
 -- | A bracketed or braced list of parameter names.  Parameters must be unique.
-parameters :: Stream s Identity Char => String -> String -> P s [SName]
+parameters :: Stream s Identity Char => String -> String -> P s [String]
 parameters open close = do
   xs <- commaList open close name
   unless (nub xs == xs) $ fail "duplicate static parameter"
   pure xs
 
 -- | A parenthesised type, which is a tuple unless it holds a single type.
-parenType :: Stream s Identity Char => P s SExp
+parenType :: Stream s Identity Char => P s (SExp String)
 parenType = parenthesized parseType STuple
 
 {- | A type atom: a name, with static arguments unless it is a bound static
 variable, or a parenthesised type.
 -}
-sAtom :: Stream s Identity Char => P s SExp
+sAtom :: Stream s Identity Char => P s (SExp String)
 sAtom = nameType <|> parenType
   where
     nameType = do
@@ -268,7 +268,7 @@ sAtom = nameType <|> parenType
         else SCon n . fromMaybe [] <$> optionMaybe staticArgs
 
 -- | A type @a -> b@, which associates to the right.
-parseType :: Stream s Identity Char => P s SExp
+parseType :: Stream s Identity Char => P s (SExp String)
 parseType = do
   l <- sAtom
   mR <- optionMaybe (op ["->"])
@@ -282,7 +282,7 @@ parseType = do
 
 {- | A binding declaration @val name = body@.
 -}
-parseBind :: Stream s Identity Char => P s DDecl
+parseBind :: Stream s Identity Char => P s (DDecl String)
 parseBind = do
   kwOnly "val"
   n <- name
@@ -290,7 +290,7 @@ parseBind = do
   DBind n <$> parseExpr
 
 -- | Everything in a signature declaration up to and including the colon.
-decHead :: Stream s Identity Char => P s (TName, [SName])
+decHead :: Stream s Identity Char => P s (String, [String])
 decHead = do
   kwOnly "dec"
   n <- name
@@ -301,13 +301,13 @@ decHead = do
 {- | A signature declaration @dec name[params] : type@.  The parameters scope
 over the signature and are 'SVar' wherever they appear.
 -}
-parseDec :: Stream s Identity Char => (TName, [SName]) -> P s DDecl
+parseDec :: Stream s Identity Char => (String, [String]) -> P s (DDecl String)
 parseDec (n, ps) = do
   sig <- withStatic ps parseType
   pure $ DTDec (TDecl (n, ps, sig))
 
 -- | Everything in an implementation up to and including the name.
-impHead :: Stream s Identity Char => P s (TName, [SName])
+impHead :: Stream s Identity Char => P s (String, [String])
 impHead = do
   kwOnly "imp"
   ps <- fromMaybe [] <$> optionMaybe (parameters "{" "}")
@@ -318,16 +318,16 @@ impHead = do
 over the patterns and the body.  The result type is left to 'Typecheck', which
 derives it from the signature this implementation is declared against.
 -}
-parseImp :: Stream s Identity Char => (TName, [SName]) -> P s DDecl
+parseImp :: Stream s Identity Char => (String, [String]) -> P s (DDecl String)
 parseImp (n, ps) = withStatic ps $ do
   pats <- fromMaybe [] <$> optionMaybe staticArgs
   pun "="
   body <- parseExpr
   tag <- freshTag
-  pure $ DImpl (TImpl (n, body, pats, tag))
+  pure $ DImpl (TImpl (n, ps, body, pats, tag))
 
 -- | A local block, whose private declarations do not escape.
-parseLocal :: Stream s Identity Char => P s DDecl
+parseLocal :: Stream s Identity Char => P s (DDecl String)
 parseLocal = do
   kwOnly "local"
   priv <- parseDecls
@@ -339,7 +339,7 @@ parseLocal = do
 {- | A declaration of any kind.  Each head is read behind a 'try' so that a
 mistake in a body or a signature is reported where it happened.
 -}
-parseDecl :: Stream s Identity Char => P s DDecl
+parseDecl :: Stream s Identity Char => P s (DDecl String)
 parseDecl =
   try parseLocal
     <|> (try decHead >>= parseDec)
@@ -352,7 +352,7 @@ The separator is read first and the declaration after it may come back empty, so
 that a trailing @;@ is absorbed by the list rather than reported as a missing
 declaration.
 -}
-parseDecls :: Stream s Identity Char => P s [DDecl]
+parseDecls :: Stream s Identity Char => P s [(DDecl String)]
 parseDecls = do
   mFirst <- optionMaybe parseDecl
   case mFirst of
@@ -369,22 +369,22 @@ parseDecls = do
 -- addition and subtraction; comparisons.
 
 -- | A literal, a parenthesised expression, or a name.
-dAtom :: Stream s Identity Char => P s DExp
+dAtom :: Stream s Identity Char => P s (DExp String)
 dAtom = dLit <|> parenExpr <|> dName
 
 -- | The argument of an application: one expression, or several as a tuple.
-parenExpr :: Stream s Identity Char => P s DExp
+parenExpr :: Stream s Identity Char => P s (DExp String)
 parenExpr = parenthesized parseExpr DTuple
 
 -- | An integer, boolean or string literal.
-dLit :: Stream s Identity Char => P s DExp
+dLit :: Stream s Identity Char => P s (DExp String)
 dLit = DInt <$> natural
     <|> (DBool True <$ kw "true")
     <|> (DBool False <$ kw "false")
     <|> (DStr <$> stringLit)
 
 -- | A dynamic variable, or a constant reference @\@name[args]@.
-dName :: Stream s Identity Char => P s DExp
+dName :: Stream s Identity Char => P s (DExp String)
 dName = do
   at <- optionMaybe (sym "@")
   n <- name
@@ -396,7 +396,7 @@ dName = do
 argument list is not behind a 'try': once one has been opened, a failure inside
 it is a real error and should be reported as one.
 -}
-dPostfix :: Stream s Identity Char => P s DExp
+dPostfix :: Stream s Identity Char => P s (DExp String)
 dPostfix = dAtom >>= go
   where
     go e =
@@ -405,7 +405,7 @@ dPostfix = dAtom >>= go
       <|> pure e
 
 -- | An operand, with a unary sign kept as @DOp1@.
-dUnary :: Stream s Identity Char => P s DExp
+dUnary :: Stream s Identity Char => P s (DExp String)
 dUnary = (DOp1 "-" <$ sym "-" <*> dUnary)
      <|> (DOp1 "+" <$ sym "+" <*> dUnary)
      <|> dPostfix
@@ -415,8 +415,8 @@ dUnary = (DOp1 "-" <$ sym "-" <*> dUnary)
 moving the input and the layer above it can take over.
 -}
 binops :: Stream s Identity Char
-       => [String] -> (DName -> DExp -> DExp -> DExp)
-       -> P s DExp -> P s DExp
+       => [String] -> (String -> (DExp String) -> (DExp String) -> (DExp String))
+       -> P s (DExp String) -> P s (DExp String)
 binops ops build operand = do
   first <- operand
   rest first
@@ -430,16 +430,16 @@ binops ops build operand = do
           rest (build o acc r)
 
 -- | A product of @*@, @/@ or @%@.
-dProduct :: Stream s Identity Char => P s DExp
+dProduct :: Stream s Identity Char => P s (DExp String)
 dProduct = binops ["*", "/", "%"] DOp2 dUnary
 
 -- | A sum or difference of products.
-dSum :: Stream s Identity Char => P s DExp
+dSum :: Stream s Identity Char => P s (DExp String)
 dSum = binops ["+", "-"] DOp2 dProduct
 
 -- | A comparison of sums.  Comparisons do not chain, so at most one operator
 -- is read here.
-dCompare :: Stream s Identity Char => P s DExp
+dCompare :: Stream s Identity Char => P s (DExp String)
 dCompare = do
   l <- dSum
   mOp <- optionMaybe (op ["==", "!=", "<=", ">=", "<", ">"])
@@ -448,7 +448,7 @@ dCompare = do
     Just o  -> DOp2 o l <$> dSum
 
 -- | A lambda @lam (x : type) => body@.
-dFun :: Stream s Identity Char => P s DExp
+dFun :: Stream s Identity Char => P s (DExp String)
 dFun = do
   kwOnly "lam"
   pun "("
@@ -460,7 +460,7 @@ dFun = do
   DLam (n, t) <$> parseExpr
 
 -- | A fixpoint @fix f(x : type) : type => body@.
-dFix :: Stream s Identity Char => P s DExp
+dFix :: Stream s Identity Char => P s (DExp String)
 dFix = do
   kwOnly "fix"
   self <- name
@@ -477,7 +477,7 @@ dFix = do
 
 -- | A conditional @if c then a else b@.  The branches extend as far right as
 -- the enclosing syntax permits.
-dIf :: Stream s Identity Char => P s DExp
+dIf :: Stream s Identity Char => P s (DExp String)
 dIf = do
   kwOnly "if"
   c <- parseExpr
@@ -487,7 +487,7 @@ dIf = do
   DIf c a <$> parseExpr
 
 -- | A let block @let decls [in body] end@.
-dLet :: Stream s Identity Char => P s DExp
+dLet :: Stream s Identity Char => P s (DExp String)
 dLet = do
   kwOnly "let"
   ds <- parseDecls
@@ -496,7 +496,7 @@ dLet = do
   pure $ DLet ds mBody
 
 -- | An expression of any kind.
-parseExpr :: Stream s Identity Char => P s DExp
+parseExpr :: Stream s Identity Char => P s (DExp String)
 parseExpr = dFun <|> dFix <|> dIf <|> dLet <|> dCompare
 
 
@@ -505,7 +505,7 @@ parseExpr = dFun <|> dFix <|> dIf <|> dLet <|> dCompare
 
 -- | A program: declarations, then a body.  A name that does not start a
 -- declaration begins the body, so no trailing separator is needed.
-parseProgram :: Stream s Identity Char => P s DProgram
+parseProgram :: Stream s Identity Char => P s (DProgram String)
 parseProgram = do
   wt
   ds <- parseDecls
@@ -523,14 +523,14 @@ evalP :: String -> String -> P String a -> Either ParseError a
 evalP name src p = runP p (PState 0 []) name src
 
 -- | Parse a whole program, rejecting anything left over.
-parseWhole :: String -> Either ParseError DProgram
+parseWhole :: String -> Either ParseError (DProgram String)
 parseWhole src = evalP "<program>" src (parseProgram <* eof)
 
 -- | Parse a single expression, rejecting anything left over.
-parseExprString :: String -> Either ParseError DExp
+parseExprString :: String -> Either ParseError (DExp String)
 parseExprString src = evalP "<expr>" src (parseExpr <* eof)
 
 -- | Parse a single type, rejecting anything left over.  With no enclosing
 -- parameters every bare name is a type constructor.
-parseTypeString :: String -> Either ParseError SExp
+parseTypeString :: String -> Either ParseError (SExp String)
 parseTypeString src = evalP "<type>" src (parseType <* eof)

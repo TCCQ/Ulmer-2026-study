@@ -2,6 +2,6 @@ dec multiply[a]: (a, a) -> a;
 val intMul = lam (p: (Int, Int)) => p.0 * p.1;
 imp multiply[Int] = intMul;
 dec exp[a]: (a, a) -> a;
-val intExp = fix self(p: (Int, Int)): (Int, Int) -> Int => if p.1 > 1 then self((p.0, (p.1 - 1))) * p.0 else 1;
+val intExp = fix self(p: (Int, Int)): (Int, Int) -> Int => if p.1 >= 1 then self((p.0, (p.1 - 1))) * p.0 else 1;
 imp exp[Int] = intExp;
 @exp[Int](4, 2)

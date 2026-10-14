@@ -7,6 +7,7 @@ import Control.Monad (when)
 import Text.PrettyPrint (render)
 
 import Ast
+import Bind
 import Interpret
 import Template
 import Parse
@@ -50,33 +51,40 @@ main = do
     putStrLn $ "Parsed:\n" ++ (render $ pp program)
 
 
-  (_, tc) <-
-    case runTT (typecheck program) of
+  (nextI, program) <-
+    case bindProgram program of
+      Left err -> (putStrLn ("Binding Error:\n" ++ show err)) >>
+        exitWith (ExitFailure 1)
+      Right e -> pure e
+  when (verbose flags) $
+    putStrLn $ "\nBound:\n" ++ (render $ pp program)
+
+  (nextI, (_, program)) <-
+    case evalTT (typecheck program) nextI of
       Left err -> (putStrLn ("Typechecking Error:\n" ++ show err)) >>
         exitWith (ExitFailure 1)
       Right e -> pure e
   when (verbose flags) $
-    putStrLn $ "\nTypechecked:\n" ++ (render $ pp tc)
+    putStrLn $ "\nTypechecked:\n" ++ (render $ pp program)
 
-  te <-
-    case runM (templateExpand tc) of
+  (nextI, program) <-
+    case evalM (templateExpand program) nextI of
       Left err -> (putStrLn ("Template Error:\n" ++ show err)) >>
         error (show err)
       Right e -> pure e
   when (verbose flags) $
-    putStrLn $ "\nTemplates expanded:\n" ++ (render $ pp te)
+    putStrLn $ "\nTemplates expanded:\n" ++ (render $ pp program)
 
-  (_, tc2@(DProgram eBinds eBody)) <-
-    case runTT (typecheck te) of
+  (nextI, (_, program@(DProgram eBinds eBody))) <-
+    case evalTT (typecheck program) nextI of
       Left err -> (putStrLn ("Typechecking Error:\n" ++ show err)) >>
         exitWith (ExitFailure 1)
       Right e -> pure e
   when (verbose flags) $
-    putStrLn $ "\nTypechecked again:\n" ++ (render $ pp tc2)
-
+    putStrLn $ "\nTypechecked again:\n" ++ (render $ pp program)
 
   when (not $ onlyExpand flags) $ do
-    v <- case runM (d2expLet [] eBinds (Just eBody)) of
+    (_, v) <- case evalM (d2expLet [] eBinds (Just eBody)) nextI of
       Left err -> (putStrLn ("Interpret Error:\n" ++ show err)) >>
          error (show err)
       Right v -> pure v
