@@ -65,14 +65,7 @@ sMerge ls rs = do
   () <- if agree
        then pure ()
        else gErr $ "Disagreement in static merge " ++ show ls ++ " and " ++ show rs ++ " overlap " ++ show sint
-  -- same for timpls
-  let dint = M.intersectionWith (\a b -> (a,b)) ls rs
-  let agree = foldr (\(a,b) acc -> acc && a == b) True dint
-  () <- if agree
-       then pure ()
-       else gErr $ "Disagreement in merge " ++ show ls ++ " and " ++ show rs ++ " overlap " ++ show dint
   pure $ M.union ls rs
-  -- This is a bad implemention of this, slow and unclear. Maybe write with unionWith and explicit join after?
 
 {- | Perform type subsitution recursively by walking the dexp and
    applying to the contained sexps.
