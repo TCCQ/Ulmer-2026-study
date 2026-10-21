@@ -1,0 +1,518 @@
+%%  Build with:  latexmk -lualatex writeup.tex
+\documentclass{article}
+
+\usepackage{ebproof}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+
+\geometry{margin=1.5in}
+
+\lstset{
+  frame=none,
+  xleftmargin=2pt,
+  stepnumber=1,
+  numbers=left,
+  numbersep=5pt,
+  numberstyle=\ttfamily\tiny\color[gray]{0.3},
+  belowcaptionskip=\bigskipamount,
+  captionpos=b,
+  escapeinside={*'}{'*},
+  language=haskell,
+  tabsize=2,
+  emphstyle={\bf},
+  commentstyle=\it,
+  stringstyle=\mdseries\rmfamily,
+  showspaces=false,
+  keywordstyle=\bfseries\rmfamily,
+  columns=flexible,
+  basicstyle=\small\sffamily,
+  showstringspaces=false,
+  morecomment=[l]\%,
+}
+
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+
+\title{Featherweight ATS3 Report}
+\author{Thomas Ulmer}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This document presents FWATS3, a stripped back version of the
+programming language ATS3 implemented in order to formalize the
+semantics of templates. The core language over which templates are
+applied is intentionally underspecified and primitive. We give a
+description of the languge, some machinery for type level
+substitutions, templates and the rules that govern them, alternatives,
+and extensions to the current system.
+
+\section{Core language}
+
+The core of FWATS is a small calculus with only a few primitive
+concepts. It features simple types, with n-ary tuples and function
+types as the only non-builtin constructors. Multi-argument functions
+are constructed with a single tuple argument and the use of the lambda
+or fix rule, depending on the need for recursion. Application, let
+binding, and variable references follow the standard lambda calculus
+constructions, and the sole conditional \verb|if| is similarly
+simple. We will avoid giving concrete semantics for this language, as
+discussed later. \todo{where?}
+
+The syntax is split between expressions and declarations and
+is summarized as follows:
+
+\begin{lstlisting}[language=Haskell]
+data SExp n
+  = SCon n [(SExp n)]
+  | SFun (SExp n) (SExp n)
+  | STuple [(SExp n)]
+
+data DExp n
+  = DInt Int
+  | DBool Bool
+  | DStr String
+  | DOp1 n (DExp n)
+  | DOp2 n (DExp n) (DExp n)
+  | DVar n
+  | DLam (n, (SExp n)) (DExp n)
+  | DFix n (n, (SExp n)) (DExp n) (SExp n) -- self name, arg+type, body, overall type
+  | DApp (DExp n) (DExp n)
+  | DIf (DExp n) (DExp n) (DExp n)
+  | DTuple [(DExp n)]
+  | DProj Int (DExp n)
+  | DLet [DDecl n] (Maybe (DExp n))
+
+data DDecl n
+  = DBind n (DExp n)
+  | DLocal [(DDecl n)] [(DDecl n)]
+
+data DProgram n
+  = DProgram [(DDecl n)] (DExp n)
+\end{lstlisting}
+
+Here \verb|n| is the type that names range over. The convention is
+that \verb|DProgram| and \verb|DLet| declarations range over both
+subsequent declarations and the body. The construction \verb|DLocal|
+allows for scoped definitions that range over other declarations. The
+effect is similar to having the right side of each exported
+declaration be a let binding, but allows sharing of the private or
+local bindings across several definitions. Here again the convention
+is sequential binding ranging downward to the end of the scope,
+allowing for iterative definitions. Thus the only source of cyclic
+references is \verb|DFix|.
+
+\subsection{Core types}
+
+This language contains only primitive type constructors. The only
+non-nullary constructors are \verb|STuple| and \verb|SFun| which are
+simple product types and simple function types. Type checking this
+language is trivial and can proceed entirely with bottom up type
+construction. Explicit annotation could be required on binds, but is
+elided here. 
+
+We will take the notational convention of representing expression with
+their Haskell AST counterparts offset in square brackets. \todo{Is
+  there a better way?}
+
+\todo{one rule for each primitive type}
+\todo{one rule for operators}
+
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\Gamma , a : \alpha \vdash b : \beta}
+    \infer1[lam]{ \Gamma \vdash [ $DLam$\: (a,\: \alpha)\: b ] : 
+      [$SFun$ \alpha \: \beta] }
+  \end{prooftree}
+\end{displaymath}
+
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\Gamma , s : [$SFun$ \: \alpha \: \beta ] , a : \alpha \vdash b : \beta}
+    \infer1[fix]{ \Gamma \vdash [$DFix$ \: s \: (a,\: \alpha) \: b \:
+      [$SFun$ \: \alpha \: \beta]]) : [$SFun$ \: \alpha \:\beta ] }
+  \end{prooftree}
+\end{displaymath}
+
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\Gamma \vdash c : Bool }
+    \hypo{\Gamma \vdash x : \alpha }
+    \hypo{\Gamma \vdash y : \alpha }
+    \infer3[if]{ \Gamma \vdash [$DIf$ \: c \: x \: y] : \alpha }
+  \end{prooftree}
+\end{displaymath}
+
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\Gamma \vdash f : [$SFun$ \: \alpha \: \beta ] }
+    \hypo{\Gamma \vdash a : \alpha  }
+    \infer2[app]{ \Gamma \vdash [$DApp$ \: f \: a] : \beta }
+  \end{prooftree}
+\end{displaymath}
+
+
+\todo{This isn't careful enough, it's abuse of notation that v is a
+  name here but would be a DExp in other rules. Be clear what the
+  context looks like}
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\Gamma \vdash v : \alpha }
+    \infer1[var]{ \Gamma \vdash [$DVar$ \: v] : \alpha }
+  \end{prooftree}
+\end{displaymath}
+
+\todo{one rule for tuples}
+\todo{one rule for projection}
+\todo{one rule for let}
+
+\section{Substitutions}
+
+In order to talk about templates ranging over more than a single type,
+we need machinery to handle matching partially constrained types and
+deriving and applying substitutions. We take said machinery from
+``Typing Haskell in Haskell'' \todo{cite}, which presents a
+comprehensible view of structural matching producing substitutions,
+different notions of composing or combining substitutions, and
+applying substitutions to types containing type variables. Their
+notions of classes and constraints are not relevant here. 
+
+Specifically we define \verb|Subst n| to be a finite map of names to
+\verb|SExp n|, i.e. types which may contain further type variables. We
+then define left sided matching like so:
+\begin{lstlisting}
+sMatch :: (SExp Name) -> (SExp Name) -> TM s r (Subst Name)
+sMatch (SVar lv) r =
+  pure $ substAtom lv r
+sMatch l@(SCon ln las) r@(SCon rn ras)
+  | (ln == rn) =
+    let folder ctx (l, r) = sMerge ctx =<< sMatch l r
+    in foldM folder substEmpty (zip las ras)
+  | otherwise = gErr $ "Can't match " ++ show l ++ " with " ++ show r
+sMatch (SFun lf la) (SFun rf ra) = do
+  m1 <- sMatch lf rf
+  m2 <- sMatch la ra
+  sMerge m1 m2
+sMatch (STuple ls) (STuple rs) =
+  let folder ctx (l, r) = sMerge ctx =<< sMatch l r
+  in foldM folder substEmpty (zip ls rs)
+sMatch l r = gErr $ "Can't match " ++ show l ++ " with " ++ show r
+\end{lstlisting}
+The details of the \verb|TM s r| monad are not relevant here, we
+simply use it to thread errors. We also need the merging of two
+substitutions, checking that they agree on overlap:
+\begin{lstlisting}
+sMerge :: (Subst Name) -> (Subst Name) -> TM s r (Subst Name)
+sMerge ls rs = do
+  let sint = M.intersectionWith (\a b -> (a,b)) ls rs
+  let agree = foldr (\(a,b) acc -> acc && a == b) True sint
+  () <- if agree
+       then pure ()
+       else gErr $ "Disagreement in static merge " ++ show ls ++ 
+         " and " ++ show rs ++ " overlap " ++ show sint
+  pure $ M.union ls rs
+\end{lstlisting}
+We also can apply substitutions to types:
+\begin{lstlisting}
+sSubst :: (SExp Name) -> (Subst Name) -> TM s r (SExp Name)
+sSubst v@(SVar n) sctx =
+  case M.lookup n sctx of
+    Just s -> pure s
+    Nothing -> pure v
+sSubst (SCon n ss) ctx = do
+  ss' <- mapM (\s -> sSubst s ctx) ss
+  pure (SCon n ss')
+sSubst (SFun f a) ctx = do
+  f' <- sSubst f ctx
+  a' <- sSubst a ctx
+  pure $ SFun f' a'
+sSubst (STuple ss) ctx =
+  STuple <$> mapM (\s -> sSubst s ctx) ss
+\end{lstlisting}
+as well as for runtime expressions and declarations in a similar
+recursive style (elided for space):
+\begin{lstlisting}
+sSubstD :: (DExp Name) -> (Subst Name) -> TM s r (DExp Name)
+sSubstDecl :: DDecl Name -> Subst Name -> TM s r (DDecl Name)
+\end{lstlisting}
+
+\section{Templates}
+
+We extend our core language with four additions to the core syntax
+tree:
+\begin{itemize}
+\item A new constructor \verb|SVar n| for \verb|SExp n|.
+\item Two new constructors \verb|DTDec (n, [n], SExp n)| and \\
+  \verb|DTImpl (n, [n], DExp n, [SExp n], Int)| for \verb|DDecl n|.
+\item A new constructor \verb|DTApp n [SExp n]| for \verb|DExp n|.
+\end{itemize}
+
+Unsurprisingly, these correspond to type variables, template
+declarations and implementations, and template usage.
+
+The template declarations serve to give a unified shape to all
+implementations of the same named template. In short, it associates a
+single polymorphic type to the template name that all implementations
+must match with.
+
+A template implementation is composed of a previously declared name,
+some number of fresh type variables, an expression in which said type
+variables may appear, a sequence of types ranging over the fresh
+variables which categorize the space of applications implemented by
+the body, and an integer tag that is uniquely identifies this
+implementation.
+
+A implementation conforms to its relative declaration if
+\begin{itemize}
+\item The names are equal.
+\item The number of argument types matches the number of parameters of
+  the template.
+\item There is some most general substitution $s$ formed by mapping
+  the declared parameter variables to the corresponding arguments,
+  where all pairings agree at every overlapping point.
+\item $s$ applied to the declared polymorphic type is equal to the
+  type of the body of the implementation. 
+\end{itemize}
+In short, the implementation must represent some subset of the
+polymorphic type associated with the declaration. In particular, if
+the implementation has no fresh type variables that it ranges over,
+then it defines some single type in the space of the polymorphic type.
+
+Templates are the primary motivation for including \verb|DLocal|,
+since declarations and implementations require more careful scoping
+than dynamic binds. The primary issue is that once an implementation
+is visible in the context, it can shadow part or all of the desired
+implementation and there is no way to specify the prior one without
+adjusting the declaration and every other associated instance. See the
+subsection about expansion. \todo{reference}
+
+\subsection{Type Checking}
+
+We perform type checking both before and after exhaustively expanding
+templates. For checking before expansion, the check on template
+declarations merely checks that that the output type is sane relative
+to the argument type variables. Implementations are checked for the
+conformity conditions presented in the previous subsection
+\todo{reference}, namely that they represent subsets of the declared
+polymorphic type and agree in type level arity. Template use sites
+(instances of \verb|DTApp|) are checked using only the
+declaration. They must agree in number of type level arguments and are
+given an overall type formed by matching the declaration's arguments
+against the supplied arguments pairwise, merging (in the specific
+sense defined in the section on substitutions) into a single
+substitution, and apply said substitution to the result type of the
+declaration. 
+
+Critically, type checking before expansion ensures the program is well
+typed without requiring any details about the mechanism by which
+implementations are selected. This is the strongest semantic
+statement that can be made about the program's correctness without
+fully unfolding the templates, i.e. running expansion in its
+entirety. \todo{Do I still believe this? Justify} 
+
+After expansion, type checking again is not strictly required, as
+templates are essentially hygienic macros. In a language with more
+complicated types it may be required or desired for more
+comprehensible error messages or expose further type directed
+optimizations. 
+
+\subsection{Implementation Selection}
+
+The procedure by which a suitable implementation is selected for a
+given use site is called a selection scheme. To define a scheme one
+must give rules for determining the following for each use site:
+\begin{itemize}
+\item The context, the set of implementations to consider
+\item A notion of matching, which implementations are suitable
+\item A process of instantiating, how to transform the selected
+  implementation for the specific use site
+\end{itemize}
+
+In this presentation and associated implementation, we present a
+simple if somewhat limiting scheme: capturing first fit. This scheme
+uses simple snapshots of the accumulated context to act as closures
+for recursive expansion and uses the matching and substitution
+machinery for matching and instantiating implementations.
+
+\subsubsection{Capturing First Fit}
+
+In Capturing First Fit, when a template use is encountered, we scan
+backward in the template context and select the first implementation
+that matches with the type level arguments of the use site. We call
+this scheme ``capturing'' because when recursively expanding the body
+of the template, we do so in the template context as it existed when
+the selected implementation was defined. In short a template
+implementation forms a closure over the template context. This allows
+the consistent use of a libraries' internal templates, even in the
+presence of recursive expansion outside of the context of the library.
+
+However this scheme is somewhat limiting and can act in unintuitive
+ways. For instance two adjacent templates can be invoked by the user,
+with the knowledge that they are implemented using the same template
+declaration internally. However despite being invoked in the same
+context, they may internally use different implementations. \todo{example}
+
+\subsubsection{Non-capturing First Fit}
+
+Equally intuitive, we could instead consider a close relative,
+Non-capturing First Fit. In this scheme the selection criteria remains
+the same, but recursive body expansion happens in the same context as
+the outer template. This has the benefit that it allows templates to
+express some end-user extensibility. A library can give an
+implementation without specifying all of the implementations it
+depends on, allowing extremely general definitions in some
+cases. \todo{example, for instance fast exponentiation based on
+  supplied multiply}
+
+This gives intuitive behavior in the default case, as adjacent
+invocations of templates have access to the same context, specifically
+in regard to user-provided dependencies. Libraries can prevent
+shadowing the library-integral definitions by including the
+implementation in a \verb|DLocal| inside the expanded body to ensure
+it is found first. 
+
+\subsubsection{Non-capturing Best Fit}
+
+If the scheme's notion of matching forms a metric rather than a simple
+boolean check, then one can embed other semantic program information
+in the data associated with each implementation, making template
+resolution serve as a search problem for the best implementation among
+several that are assumed to function for the given task. This is
+increasingly easy to imagine in languages with more expressive types
+than the simple skeleton presented here. \todo{This feels like a cop
+  out but I don't actually have that much to say}
+
+Even without requiring a notion of a metric on matchings, one can
+consider encoding a very basic permission system through the use of a
+parameterized data type a la Peano numerals. An extra type argument
+can be appended and implementations can match on $S(x)$ for some fresh
+variable $x$ for requiring one level, or $S(S(x))$ for two, et
+cetera. This allows specifying a requirement for an implementation
+surpassing some security requirement, but not the desire to always
+take the most or the least elevated implementation beyond some point.
+
+\subsection{Expansion}
+
+Expansion is largely determined by choice of selection scheme. All
+that remains is walking the AST, accumulating a context of the visible
+templates. Upon encountering a template use, select an implementation
+according to the chosen scheme and replace the use site with body of
+the implementation after applying the substitution derived from the
+types given by the use site. \todo{Be more formal/mechanical about
+  this process} Then continue expansion into the newly inserted
+body. The choice of context during body expansion is determined by the
+scheme, as described above.
+
+In order to handle the scoping limits supplied by \verb|DLocal| the
+current implementation performs some local program transformations:
+First eliminating ambiguity around names by including integer tags as
+part of the name during an initial binding pass. This allows us to
+widen the scope of any \verb|DBind| without fear that it will change
+what any \verb|DVar| points to, as the integer tags will ensure that
+colliding user-supplied names don't actually compare equal. Once this
+is done, we can safely promote any \verb|DBind| out of the private or
+scoped half of a \verb|DLocal| either upwards into the surrounding
+scope, or downwards into the public half of the same pair.
+
+Specifically a \verb|DBind| that is referenced inside a template
+implementation may need to be reachable long after the end of the
+\verb|DLocal| block, particularly in the presence of recursive
+expansion. With the expansion strategy of effectively inlining the
+body at use sites, the simplest way to ensure that the \verb|DBind| is
+visible anywhere the implementation could be reachable is simply to
+promote it to the surrounding binding context, relying on name tags
+not to change semantics. This transformation must respect the
+definition order of definitions, and template definitions or
+implementations cannot be promoted with the same impunity.
+
+We apply the following rules that preserve the definition order but
+give us the desired scoping changes when encountering \verb|DLocal| nodes:
+\begin{itemize}
+\item Any prefix of \verb|DBind| binds in the private block are moved
+  upwards to sit immediately prior to the \verb|DLocal| block in the
+  surrounding scope.
+\item Any contiguous stretch of \verb|DTDec| or \verb|DImpl|
+  definitions remain in the private block.
+\item Let $s$ be the maximal suffix of the private block that starts with a
+  \verb|DBind| but may contain all four kinds of definitions after the
+  first two rules. The original body of the \verb|DLocal|, $bs$ is replaced
+  with $[$DLocal$ \:s\: bs ]$ and the rules are applied to this inner
+  block recursively.
+\end{itemize}
+\todo{Give a concrete example}
+
+This transformation can be applied in the same pass as general
+template expansion.
+
+\todo{Talk about other ways to solve this problem, think scoping w/ a
+  visible tag set for each impl rather than explicit scopes, then drop
+public vs private entirely, more flexible I think.}
+
+\todo{What else?}
+
+\section{Extensions}
+
+The system described here can be extended in a number of ways. The
+most obvious limitation is presented currently is that the underlying
+core language is quite limited. A more reasonable language with sum
+types, matching, and more built-in types could be employed without
+having to make any changes to the template system whatsoever.
+
+\subsection{Higher Kinded Type Variables}
+
+More interestingly, if type variables are allowed to range over type
+constructors, then this system recovers a lot of the flavor of Haskell
+type classes, while being exhaustively expanded at compile time. For
+instance on could write accumulations over arbitrary containers with
+the use of a \verb|foldr| template, or arbitrary monads in the
+standard Haskell style. The substitution handling is already
+expressive enough to handle this, though it lacks some safety checks
+around matching kinds at present.
+
+\subsection{Runtime Polymorphism}
+
+If the core language supports functions that are truly polymorphic, i.e.
+a single function body's code that can be executed for any instance
+rather than the templates single source body expanded to many runtime
+functions, then powerful generic implementations of some templates may
+be possible. This is the standard practice of ML and its language
+descendants, where all polymorphic functions have a single generic
+implementations and many compiler generated monomorphic variants for
+performance. By exposing both polymorphic functions and templates to
+the user, the language provides much more direct control and
+eliminated guesswork and cajoling the compiler to optimize or inline
+in the desired way.
+
+Again we benefit from Haskell's prior work, as the substitution
+machinery we inherit from them is already suited to work over
+polymorphic types. It may be useful to represent type variables
+introduced by templates which should be exhaustively eliminated and
+type variables associated with polymorphic functions with separate
+constructors or a flag so as to aid debugging, but again it is not
+strictly necessary. \todo{Is this true? I think so but I'm not
+  completely sure}
+
+\subsection{Separate Compilation}
+
+Templates present a serious barrier to efficient separate
+compilation. If templates never stretch across module or compilation
+boundaries then no changes are necessary, but this is a serious
+limitation given the expressive power of templates.
+
+Templates in this presentation are fundamentally source to source
+transformations. As such, any attempt to delay resolution requires
+delaying a large section of the compiler's work until the linking
+phase (as compiling any C++ project would have you know). Depending on
+the exact details of the selection scheme and intra-module visibility,
+it may be possible to do meaningful work without a complete program
+view, for instance partially evaluating template selection in a
+capturing scheme, where some recursive implementation selections are
+decidable without full information. In any case this requires
+infrastructure for compiled headers or interface files or other
+details of the compilation process that depend critically on the
+details of the core language and are out of scope here.
+
+%% \printbibliography
+\end{document}
