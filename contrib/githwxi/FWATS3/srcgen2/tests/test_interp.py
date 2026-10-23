@@ -1,4 +1,4 @@
-"""Interpreter tests emphasizing lexical capture of both environments."""
+"""Interpreter tests for lexical closures and template environment lookup."""
 from pathlib import Path
 import unittest
 
@@ -69,7 +69,7 @@ class InterpreterTests(unittest.TestCase):
             f(3)
         """), 16)
 
-    def test_implementation_captures_both_environments(self):
+    def test_implementation_captures_variables_and_uses_active_templates(self):
         self.assertEqual(run("""
             dec helper: sint;
             imp helper = 10;
@@ -79,7 +79,7 @@ class InterpreterTests(unittest.TestCase):
             val x = 100;
             imp helper = 20;
             @f[bool](true)
-        """), 11)
+        """), 21)
 
     def test_closure_records_and_environment_snapshots(self):
         incoming = {"x": 3}
@@ -90,7 +90,7 @@ class InterpreterTests(unittest.TestCase):
         self.assertIsInstance(t[0], TemplateClosure)
         self.assertEqual(d["f"].denv["x"], 3)
         self.assertEqual(t[0].denv["x"], 3)
-        self.assertEqual(t[0].tenv, ())
+        self.assertFalse(hasattr(t[0], "tenv"))
         self.assertEqual(d2exp_evaluate(d2exp_parse("f()"), d, t), 3)
         self.assertEqual(d2exp_evaluate(d2exp_parse("@value"), d, t), 3)
         self.assertNotIn("f", incoming)

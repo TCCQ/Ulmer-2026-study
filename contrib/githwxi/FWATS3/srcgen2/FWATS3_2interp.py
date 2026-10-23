@@ -41,7 +41,6 @@ class D2Vfix:
 class TemplateClosure:
     implementation: a.D2Cimpl
     denv: denv
-    tenv: tenv
 
 
 type D2VAL = int | bool | str | tuple[D2VAL, ...] | D2Vcon | D2Vlam | D2Vfix
@@ -163,7 +162,7 @@ class _Interpreter:
                 raise FWATS3RuntimeError(
                     f"Implementation {name!r} has unbound or unused static parameters")
             body = _substitute(declaration.arg2, bindings)
-            return self.expression(body, closure.denv, closure.tenv)
+            return self.expression(body, closure.denv, templates)
         raise FWATS3RuntimeError(f"No matching implementation for template {name!r}")
 
     def apply(self, function, argument):
@@ -284,7 +283,7 @@ class _Interpreter:
                 # Signatures have no runtime value; check them before evaluation.
                 continue
             elif isinstance(d, a.D2Cimpl):
-                closure = TemplateClosure(d, _snapshot(local), implementations)
+                closure = TemplateClosure(d, _snapshot(local))
                 implementations = (closure,) + implementations
                 exported_templates = (closure,) + exported_templates
             elif isinstance(d, a.D2Clocal):

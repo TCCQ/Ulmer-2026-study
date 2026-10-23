@@ -382,15 +382,15 @@ The three closure records are:
 D2Vcon(name, args)
 D2Vlam(expression, denv, tenv)
 D2Vfix(expression, denv, tenv)
-TemplateClosure(implementation, denv, tenv)
+TemplateClosure(implementation, denv)
 ```
 
-Both function forms and each stored implementation capture both environments.
-Variable environments are copied into read-only mapping snapshots; template
-environments are tuples of existing closure records. Subsequent declarations
-do not change a previously captured environment. AST objects are treated as
-unchanging by the interpreter, although the AST dataclasses themselves are not
-frozen.
+Function forms capture both environments. A template implementation captures
+only its variable environment; template references in its body use the active
+`tenv` where the implementation is invoked. Variable environments are copied
+into read-only mapping snapshots; template environments are tuples of closure
+records. AST objects are treated as unchanging by the interpreter, although
+the AST dataclasses themselves are not frozen.
 
 ### 5.2 Evaluating ordinary code
 
@@ -411,14 +411,9 @@ as integer operands despite Python's boolean/integer inheritance relationship.
 ### 5.3 Registering an implementation
 
 Processing an `imp` does not evaluate its body. Instead, the interpreter builds
-`TemplateClosure(implementation, current_denv, current_tenv)` and prepends it
-to `tenv`. A `val` evaluates its initializer and extends `denv`; a `dec` has no
-runtime effect.
-
-The template environment captured by an implementation precedes its own
-insertion. Recursive functions should therefore use `fix`. An implementation
-body is not automatically recursive through its template constant name; such a
-reference searches the captured environment and can find only older entries.
+`TemplateClosure(implementation, current_denv)` and prepends it to `tenv`. A
+`val` evaluates its initializer and extends `denv`; a `dec` has no runtime
+effect.
 
 ### 5.4 Matching and instantiation
 
@@ -435,7 +430,7 @@ To evaluate `@name[T1,...,Tn]`, the interpreter:
    implementation's declared parameters.
 5. Substitutes those types into a fresh copy of the implementation body.
 6. Evaluates that body using the selected implementation closure's captured
-   `denv` and `tenv`.
+   `denv` and the active `tenv` at the reference.
 
 The first successful candidate wins. Selection uses declaration order, with no
 additional preference for concrete or structurally more specific patterns.
@@ -496,7 +491,7 @@ the private variable. The later `val zi = 1` creates an outer binding.
 The final template use selects `zero[sint]`, whose body `zi` is evaluated in
 the captured environment containing zero.
 
-### 6.2 Capturing template dependencies
+### 6.2 Resolving template references at invocation
 
 ```fwats3
 dec helper: sint;
@@ -507,13 +502,12 @@ imp helper = 20;
 (@saved, @helper)
 ```
 
-The result is `(10,20)`. `saved` captures the template environment containing
-the first helper implementation. Its body continues to select that helper,
-while the final direct reference sees the newer implementation.
+The result is `(20,20)`. `saved` captures only its variable environment. When
+its body references `helper`, that reference uses the active template
+environment and selects the newer implementation.
 
-Selection therefore has two distinct moments: the caller's current `tenv`
-selects an implementation, then that implementation's captured `tenv` governs
-any template references inside its body.
+The active `tenv` both selects an implementation and resolves template
+references made by its body.
 
 ### 6.3 Overlapping patterns
 

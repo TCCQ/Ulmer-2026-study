@@ -160,20 +160,21 @@ The two environments have distinct roles:
 - `denv` is a read-only mapping from dynamic variable names to values.
 - `tenv` is a newest-first tuple of `TemplateClosure` records.
 - Each function closure stores its expression and both definition-time
-  environments. Each template closure stores its `D2Cimpl` and both
-  definition-time environments.
+  environments. Each template closure stores its `D2Cimpl` and its definition-
+  time variable environment (`denv`).
 - A template reference searches the current `tenv` for the most recent
   matching implementation. `s2exp_match` compares tuple wrappers around the
   entire pattern/argument lists, so repeated variables share one match context.
   There is no additional specificity ranking.
 - The resulting static bindings are substituted into a fresh implementation
   body, respecting nested `dec`/`imp` binders. Evaluation then uses that
-  implementation's captured `denv` and `tenv`. Requested static arguments
-  must be ground; `int` is normalized to `sint`.
+  implementation's captured `denv` and the active `tenv` at the template
+  reference. Requested static arguments must be ground; `int` is normalized to
+  `sint`.
 - Implementations are stored without evaluating their bodies. Each reference
   instantiates and evaluates its selected body anew; there is no memoization.
-  An implementation captures the template environment preceding its own
-  insertion. Use `fix` for recursion, as in factorial and Fibonacci.
+  Template references in an implementation body use the active template
+  environment. Use `fix` for recursion, as in factorial and Fibonacci.
 - `dec` is erased at runtime. `local` evaluates the private region, then the
   public region, and exports only public variable bindings and implementation
   closures. Captured environments retain private dependencies.
