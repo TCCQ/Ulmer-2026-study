@@ -5,3 +5,8 @@ tags
 *.hi
 __pycache__
 dist-newstyle
+writeup/writeup.fls
+writeup/writeup.aux
+writeup/writeup.fdb_latexmk
+writeup/writeup.log
+writeup/writeup.pdf
