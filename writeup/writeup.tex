@@ -5,6 +5,8 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{geometry}
+\usepackage{amsthm}
+\usepackage{amsmath}
 
 \geometry{margin=1.5in}
 
@@ -33,11 +35,283 @@
 
 \newcommand{\todo}[1]{\textcolor{red}{#1}}
 
+\newcommand{\kstar}{\mathrm{Type}}
+\newcommand{\ldb}{[\![}
+    \newcommand{\rdb}{]\!]}
+\newcommand{\lda}{\langle\!\langle}
+\newcommand{\rda}{\rangle\!\rangle}
+\newcommand{\ve}{\varepsilon}
+\newcommand{\de}{\Delta}
+\newcommand{\ga}{\Gamma}
+\newcommand{\from}{\leftarrow}
+\newcommand{\hole}{\bullet}
+\newcommand{\st}{\,.\,}
+\newcommand{\cl}{{\colon}}
+\newcommand{\closure}[3]{\langle #1 ,\, #2 , \, #3 \rangle}
+\newcommand{\subst}[2]{\mathbf{subst}(#1 ,\, #2)}
+\newcommand{\match}[2]{\mathbf{match}(#1 ,\, #2)}
+\newcommand{\pp}{{+}\!{+}}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+
 \title{Featherweight ATS3 Report}
 \author{Thomas Ulmer}
 
 \begin{document}
 \maketitle
 
+\section{Dynamic Language}
+
+We give a simply typed lambda calculus variant. Let $x,y,z$ range over terms, $T,X,Y$ be names of types. We assume names to be unique, but will work with names sans tag for clarity. One could also consider DeBruijn indices as another method of differentiation. Parenthesis exist only in the meta language for grouping, they have no semantic significance.
+
+\subsection{Type System}
+
+There is a kind named $\kstar$ and for kind $k_1$ and $k_2$, a kind $k_1 \to_k k_2$. where $\to_k$ is the arrow construcor on kinds and distinct from the arrow construcor on types (which has kind $\kstar \to_k \kstar \to_k \kstar$)
+
+There is some fixed set of types and type constructors with associated kind. This set contains at least the arrow constructor for function types.
+
+For any type of kind $\kstar$, there is some fixed set of constructors.
+
+A type variable is some name $a$ that ranges over some single kind. As such it can appear as the type of a term, as an argument to a type constructor, or in the place of a type constructor. In all cases the kinds much match for the type to be well formed. The context $\ga$ contains both mappinngs from term names to types, as well as type variable names to types in contexts where they are instantiated. As with term names, we assume no collisions in names between type variables and between terms and type variables.
+
+A substitution is a finite partial mapping of type variables to types, which may contain other type variables but not the one being mapped. We treat substitutions as sets of pairs $(a,X)$ of variables $a$ to types $X$. Substitutions can be merged if they agree on all intersecting variables. Subsitutions can be composed with direction by iteratively applying the substitutions of the left to the types on the right, and merging the resulting sets. A substitution can be applied to a type containing type variables, written $\subst{s}{T}$. This proceeds by the intuative recursive substitution on the tree of types and type constructors. We may also write $\subst{s}{e}$ for this application applied recursively to all types that appear in term $e$.
+
+We will use $\vec{a}_n$ and $(a_1,a_2,\dots,a_n)$ interchangably to reduce the number of symbols. Recall that parenthesis are solely for grouping in the metalangauge, so $\langle (a_1,a_2)\rangle$ is equivalent to $\langle a_1, a_2\rangle$ for all sets of delimiting pairs.
+
+We define a partial function $\match{\vec{x}}{\vec{y}}$ on tuples $(x_1, x_2, x_3)$ and $(y_1, y_2, y_3)$ for types $x_i,y_i$. Two vectors match if and only if they are of the same length, for all pairs $x_i, y_i$ there is some unifying substitution $s_i$ such that $\subst{s_i}{x_i} = y_i$, and that all $s_i$ agree on all pairwise intersections. Thus a successful matching produces some overall substitution $s$ where we have that $\subst{s}{x_i} = y_i$ for all $i$ by construction. This function is efficiently computable and always produces a minimal substitution if one exists. See \todo{citing format} ``Typing Haskell in Haskell'' for a definition of this matching function and a comprehensible treatment of all of type level machinery used here.
+
+Two types, possibly containing type variables, may be unifiable. A (left) unification of $X$ and $Y$ if it exists is a substiution $s$ such that $\subst{s}{X} = Y$ exactly.
+
+Note that we treat types containing type variables as a family of types implicitly for all qualified over the set of type variables that occur in the type. Thus we treat \verb|List 'a| as $\forall a . \mathrm{List}\ a$ in some contexts. We still may check for equality over these terms, simply by requiring that the structure is identical and that where variables appear they match exactly, ie we take equality without $\alpha$-equivlence. \todo{Don't love this, do I need an order on qualifers? Maybe not necessary}
+
+\subsection{Terms and Evaluation}
+Terms may be one of: a construcor for some type, a lambda term of the form
+\[
+\lambda x\cl X \st y
+\]
+, a fixed point term of the form
+\[
+\mu (s\cl X\to Y,\,x\cl X) \st y
+\]
+, or an application 
+\[
+e_1 e_2
+\]
+built from two terms.
+
+We have the following unsurprising typing judgments:
+\[\arraycolsep=5pt
+\begin{array}{cc}
+\begin{prooftree}
+  \hypo{\Gamma,\, x\cl X \vdash y\cl Y}
+  \infer1[lambda]{\Gamma \vdash (\lambda x\cl X \st y) \cl  X \to Y}
+\end{prooftree}
+&
+\begin{prooftree}
+  \hypo{\Gamma,\, s\cl X\to Y,\, x\cl X \vdash y\cl Y}
+  \infer1[fix]{\Gamma \vdash (\mu (s\cl X\to Y,\, x\cl X) \st y) \cl  X \to Y}    
+\end{prooftree}
+\\[15pt]
+\begin{prooftree}
+  \hypo{\Gamma \vdash e_1\cl  X \to Y}
+  \hypo{\Gamma \vdash e_2\cl  X}
+  \infer2[apply]{\Gamma \vdash e_1 e_2 \cl  Y}
+\end{prooftree}
+&
+\end{array}
+\]
+
+\todo{tighen up around evaluation order. doesn't matter (?) but should say something concrete}
+
+We give an evaluation semantics based on explicit closures and unspecified reduction order. The evalutation of an expression, if it terminates, produces a value. Each contructor produces a distinct value for distinct arguments, and there are also values of the form $\closure{\ve}{x}{y}$ which represents the closure of body $y$ with pending argument $x$ in environment $\ve$. In the presence of a context mapping term names to types $\ga$, values may also be given typing judgements, with primitve values having the obvious type and a value $\closure{\ve}{x}{y}$ having the same type as the $\lambda$ or $\mu$ term that produced it. Values have types associated with them exactly insofar as evaluation is type preserving.
+
+Let $\ve$ be the environment mapping names to values. We write evaluation like $\ldb \ve ; e \rdb \to v$ for $e$ evaluating to $v$ in environment $\ve$. We write $\ve[v \from x]$ for $x$ being mapped to $v$ in $\ve$. We write $[x\to v]\ve$ for an environment where $x$ points to $v$ and all other names have the same mapping as in $\ve$. \todo{Better notation for updates}
+
+We give evaluation rules for well typed terms:
+\begin{displaymath}
+  \begin{prooftree}
+    \infer0{\ldb\ve ; \lambda x\cl \hole \st y \rdb \to \closure{\ve}{x}{y}}
+  \end{prooftree}
+\end{displaymath}
+\begin{displaymath}
+  \begin{array}{cr}
+    \begin{prooftree}
+      \infer0{\ldb\ve ; \mu (s\cl \hole,\, x\cl \hole) \st y \rdb \to c }
+    \end{prooftree} 
+    &
+    \mathrm{where} \enspace c = \closure{\ve^*}{x}{y} \\
+    & \ve^* = [s \to c]\ve
+  \end{array}
+\end{displaymath}
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\ldb \ve ; e_1 \rdb \to \closure{\ve'}{x}{y}}
+    \hypo{\ldb \ve ; e_2 \rdb \to v}
+    \infer2{\ldb \ve ; e_1 e_2 \rdb \to \ldb [x \to v]\ve' ; y\rdb }
+  \end{prooftree}
+\end{displaymath}
+
+Note particularly that evaluation does not depend in any way on the types of terms, and for well typed terms evaluation is type preserving. 
+
+\section{Templates}
+
+We give an extension of the dynamic language with the following new term forming features. 
+
+We give a rule for defining the shape of a template over some lexical scope:
+\begin{displaymath}
+  \Phi n \langle a,b,c,\dots\rangle \cl w \st e
+\end{displaymath}
+Which says in expression $e$ name $n$ refers to a template, the type of which is contained in the family of types defined by $w$, which may contain type variables $a,b,c$, et cetera. 
+
+Next is the definition of a template instance:
+\begin{displaymath}
+  \tau \{a,b,c,\dots\} n \langle x,y,z,\dots\rangle {=} e_1 . e_2
+\end{displaymath}
+where $a,b,c$ are type variables, $x,y,z$ are types possibly containing the type variables in braces. Intuitively $e_1$ is the body that the template will expand to if selected, and $e_2$ is the expression in which $n$ may refer to $e_1$ when given matching static (read type) arguments. Note that $=$ has higher precedence than $.$ in this context.
+\todo{some way to do this without $\dots$}
+
+Finally is the use of a template. It takes the form
+\begin{displaymath}
+  n\langle X,Y,Z,\dots\rangle
+\end{displaymath}
+where $n$ is the name of the desired template and $X,Y,Z,\dots$ are types, possibly containing any type variables in scope.
+
+\subsection{Typing Templates}
+
+Declarations:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\ga, n\cl w \vdash e \cl E}
+    \infer1{\ga \vdash \Phi n \langle a,b,c,\dots\rangle \cl w \st e \cl E}
+  \end{prooftree}
+\end{displaymath}
+\todo{Do we also need side conditions on w wrt. to abc here?}
+
+Implementations:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\ga \vdash n \cl w}
+    \hypo{\ga \vdash e_1 \cl w'}
+    \hypo{\ga \vdash \exists s . \subst{s}{w} = w'}
+    \hypo{\ga \vdash e_2 \cl E}
+    \infer4{\ga \vdash \tau \{a,b,c,\dots\} n \langle x,y,z,\dots\rangle {=} e_1 . e_2 \cl E}
+  \end{prooftree}
+\end{displaymath}
+
+Use sites:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\ga \vdash n \cl w}
+    \infer1{\ga \vdash n\langle X,Y,Z,\dots\rangle \cl w}
+  \end{prooftree}
+\end{displaymath}
+This typing judgment is intentionally general. In reality the resolution of templates during evaluation will produce narrower types than this rule, which only guarantees that the use site is typable with the umbrella type given in the declaration. The requirement that the declared type unifies with the type of a given implementation ensures that if the use site type checks with the declared type, it will also type check with any implmentation instantiated in place of the use site. \todo{give a more airtight proof of this. Based on the fact that no typing judgment can require that a term have a more general type, only less general.}
+
+\subsection{Evaluation}
+
+We extend the single environment evaluation of the dynamic language with a second environment and rules for template terms, as well as bring the typing environment $\ga$ forward into the evaluation model. The new environment for templates, $\de$, is an ordered mapping of names to tuples $\lda (x,y,z) , \ve  , e_i \rda$ where the tuple on the left defines a family of types, the middle is the dynamic environment at the implementation site, and the right is the expression that will be instantiated in place of a use site that matches. 
+
+For well typed terms the following rules hold:
+\begin{displaymath}
+  \begin{array}{c}
+  \begin{prooftree}
+    \infer0[declaration]{\ldb \ve,\ga,\de ;
+      \Phi n \langle \vec{a}_m \rangle \cl w . e \rdb 
+      \to 
+      \ldb \ve, [n \to w]\ga, [n\to \emptyset]\de ;
+      e \rdb}
+  \end{prooftree}
+  \\[15pt]
+  \begin{prooftree}
+    \infer0[implementation]{\ldb \ve,\de ;
+      \tau \{\vec{a}_r\} n \langle \vec{x}_t \rangle {=} e_1 . e_2\rdb
+      \to
+      \ldb \ve,\ga,[n \to \lda \vec{x}_t , \ve, e_1 \rda \pp \de[n]]\de ; e_2 \rdb]
+    }
+  \end{prooftree}
+  \end{array}
+\end{displaymath}
+where $r,t$ are arbitrary fixed naturals, and $\pp$ is prepending to an ordered container.
+
+In order to evaluate template uses, we need to define instance selection. In prose, for a given use site with static arguments $\vec{x}_m$, we select the first implementation $\lda \vec{y}_m ,e_1 \rda$ such that $\match{\vec{y}_m}{\vec{x}_m} = s$ for some substitution $s$. Selecting the first such match according to the order of $\de$ gives an intuitive scoping, where use sites ``look upwards'' to source implementations and stop on success.
+
+Note also that this introduces a new kind of failure not covered by type checking or checking that names are well scoped. If a use site supplies static arguments that no not match with any instance in scope, the program is not well formed and evaluation cannot proceed.
+
+\todo{We need to explicitly evaluate anything in the dyn closure of body when forming an impl. That was the env contains only values and not exprs and we know exactly what is in it. There might be some issues with templates that capture values that contain templates.}
+
+The rule for use site resolution has three cases. Where the topmost implementation for $n$ matches:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\de[(\lda\vec{y}_m , \ve', e_t \rda \pp \hole) \from n]}
+    \hypo{\match{\vec{y}_m}{\vec{x}_m} = s}
+    \infer2[instantiation]{\ldb \ve,\ga,\de ; n\langle \vec{x}_m \rangle \rdb 
+      \to n
+      \ldb \ve',\ga ,\de ; \subst{s}{e_t} \rdb}
+  \end{prooftree}
+\end{displaymath}
+Where the topmost implementation for $n$ does not match and the search must continue:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\de[(\lda\vec{y}_m , e_t \rda \pp r) \from n]}
+    \hypo{\neg\match{\vec{y}_m}{\vec{x}_m}}
+    \infer2[t-recurse]{\ldb \ve,\ga,\de ; n\langle \vec{x}_m \rangle \rdb 
+      \to 
+      \ldb \ve,\ga,[n \to r]\de ; n\langle \vec{x}_m \rangle \rdb}
+  \end{prooftree}
+\end{displaymath}
+Where no (remaining) implementation for $n$ exists:
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\de[\emptyset \from n]}
+    \infer1[t-fail]{\ldb \ve,\ga,\de ; n\langle \vec{x}_m \rangle \rdb 
+      \to 
+      \mathtt{FAIL}}
+  \end{prooftree}
+\end{displaymath}
+These cases are disjoint and do not introduce any danger of non-termination despite producing the same expression to be evaluated as the environment $\de$ is strictly decreasing.
+
+\subsubsection{Extension of Dyn}
+
+They are not given explicitly here, \todo{should I?} but the $\ve,\ga,\de$ evaluation has a corresponding rule for each rule of $\ve$ evaluation. They are identical except for passing the template context $\de$ through unchanged and marking the type of terms in $\ga$ when they are introduced in the lambda or fix rules. We will still refer to these rules as $\ve$ evaluation rules or Dyn rules where context is clear.
+
+Thus we have our first property of $\ve,\ga,\de$ evaluation: it is a strict extension of the $\ve$ evaluation, specifically
+\begin{displaymath}
+  \begin{prooftree}
+    \hypo{\ldb\ve ; e \rdb \to v}
+    \infer1{\ldb \ve,\ga,\de ; e \rdb \to v}
+  \end{prooftree}
+\end{displaymath}
+\todo{this isn't a definitional rule, it's a proven consequence of them, make it a lemma.} This is evident, as any expression which has an evaluation under $\ve$ evaluation cannot contain any template declarations, implementations, or usage. Thus none of the new rules apply and $\ve,\ga,\de$ evaluation is indentical to the $\ve$ evaluation on such inputs.
+
+We want to reason about early vs late template selection relative to some standard evaluation order (here leftmost innermost \todo{correct?}). The motivation to perform all template expansion exhaustively at the start (``compile time'' as it were), and leave only the Dyn language to evaluate at runtime, while having the same semantics as the $\ve,\ga,\de$ evaluation that is relatively easy to reason about. The environment based model does not lend itself to differing evaluation orders despite its conceptual simplicity, so we instead present alternative versions of the template rules based on term rewriting. This parallels the source to source or inlining behavior of practical template systems.
+
+%% Recall that our (modified) $\ve$ evluation is type preserving but does not depend in any way on the types of the terms being evaluated. We have the following lemma:
+
+%% \begin{lemma}
+%%   An evaluation with a Dyn step followed by a $\Phi$ step may be reordered to perform the $\Phi$ step first without affecting the outcome of the evaluation (ie termination and resulting value).
+%% \end{lemma}
+%% \begin{proof}
+%%   The $\Phi$ rule only alters the typing context $\ga$ and the Dyn rules do not depend on $\ga$ in any way. \todo{This doesn't quite work since the $\Phi$ rule needs the body to typecheck which can depend on that parent $\ga$, so what does it mean to reorder earlier?}
+%% \end{proof}
+
+%% For template implementation and use or instantiation, we need a few things for the capturing behavior to work. Namely:
+%% \begin{lemma}
+%%   If a $\tau$ rule captures $\ve'$ to evaluate the body in, then evaluating in the environment $\ve$ of the use site will always produce the same value.
+%% \end{lemma}
+%% \begin{proof}
+%%   We have that all names are unique in the program, thus there is no name shadowing. Furthermore, since templates are not first class, specifically they cannot be returned from $\lambda$ or $\mu$ terms the names referenced in the body if the implementation must also be visible to the use site, as the template implementation and indeed every name binding ranges over the entire program subtree. Thus any environment $\ve$ that can refer to name $n$ bound with $\ve'$ must be strictly larger, ie $\ve'[x\to v] \implies \ve[x\to v]$.
+%% \end{proof}
+
+%% This argument relies on the limited scoping capabilities of this language. In a more realistic setting one might perform capturing on the names at compile time and require that the names captured are static, ie do not vary at runtime in any way. A similar argument applies to types, but is not necessary, as $\tau$ does not capture $\ga$. 
+
+
+\todo{prove safe to template expand late vs early by scopeing. ie if it is visible to closure at impl time then it is also visible with the same name at use time due to the fact that names are unique and there is no closing the template scope relative to the dyn scope. ie templates are not first class, they can't be returned from functions.}
+
+
+
+%% For evaluation of an well formed expression under $\ve,\ga,de$ we can consider a trace, the order in which rules are applied to reduce it entirely to a value. It is evident that the extended versions of the $\ve$ rules (lambda, fix, and apply) commute with declaration and implementation steps, as 
+
 %% \printbibliography
 \end{document}
+
