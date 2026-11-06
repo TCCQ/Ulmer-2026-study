@@ -62,10 +62,6 @@ def d2ecl_pretty(declaration: a.d2ecl, indent: int = 0) -> str:
         binder = "{" + _comma(params) + "}" if params else ""
         return (f"{pad}imp{binder} {declaration.arg1}{patterns} = "
                 f"{d2exp_pretty(declaration.arg2)}")
-    if isinstance(declaration, a.D2Clocal):
-        private = d2eclist_pretty(declaration.arg1, indent + 2)
-        public = d2eclist_pretty(declaration.arg2, indent + 2)
-        return (f"{pad}local\n{private}\n{pad}in\n{public}\n{pad}end")
     raise FWATS3PrettyError(f"Unsupported declaration {type(declaration).__name__}")
 
 

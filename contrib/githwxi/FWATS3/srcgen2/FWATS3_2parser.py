@@ -11,8 +11,8 @@ class FWATS3SyntaxError(SyntaxError):
     """Invalid FWATS3 source, with standard filename/line/offset attributes."""
 
 
-_KEYWORDS = set("lam fix if then else let in end val dec imp local true false".split())
-_DECLARATIONS = {"val", "dec", "imp", "local"}
+_KEYWORDS = set("lam fix if then else let in end val dec imp true false".split())
+_DECLARATIONS = {"val", "dec", "imp"}
 _GENERIC_OPERATORS = {"D2CON", "D2TCK", "D2ARG"}
 _COMPARISONS = {"<", ">", "<=", ">=", "==", "!="}
 _TOKEN = re.compile(
@@ -219,12 +219,7 @@ class _Parser:
                 self.expect("=")
                 body = self.expression()
             return ast.D2Cimpl(name, body, _fnlist(params), patterns)
-        self.expect("local")
-        private = self.declarations()
-        self.expect("in")
-        exported = self.declarations()
-        self.expect("end")
-        return ast.D2Clocal(private, exported)
+        self.error(f"Expected declaration, found {self.current.value!r}")
 
     def expression(self):
         if self.current.kind in {"lam", "fix"}:

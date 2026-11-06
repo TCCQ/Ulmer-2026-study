@@ -141,28 +141,6 @@ class InterpreterTests(unittest.TestCase):
             @outer[sint]()
         """), 16)
 
-    def test_local_exports_capture_private_environments(self):
-        self.assertEqual(run("""
-            dec helper: sint;
-            imp helper = 1;
-            local
-                val hidden = 40;
-                imp helper = 2
-            in
-                val f = lam(u: ()) => hidden + @helper;
-                dec public: () -> sint;
-                imp public = f
-            end;
-            (@public(), @helper)
-        """), (42, 1))
-        d, t = libfile_evaluate(libfile_parse("""
-            local val secret = 1; imp private = 2
-            in val public = lam(u: ()) => secret + @private end
-        """))
-        self.assertNotIn("secret", d)
-        self.assertFalse(t)
-        self.assertEqual(d2exp_evaluate(d2exp_parse("public()"), d, t), 3)
-
     def test_list_stream_template_patterns(self):
         self.assertEqual(run("""
             dec kind[t]: () -> sint;

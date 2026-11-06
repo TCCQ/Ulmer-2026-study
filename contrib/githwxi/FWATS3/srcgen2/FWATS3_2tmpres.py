@@ -119,16 +119,6 @@ class _Resolver:
             elif isinstance(declaration, a.D2Cbind):
                 output.append(a.D2Cbind(
                     declaration.arg1, self.expression(declaration.arg2, active)))
-            elif isinstance(declaration, a.D2Clocal):
-                private, private_active = self.declarations(declaration.arg1, active)
-                public, public_active = self.declarations(declaration.arg2, private_active)
-                # Keep the local boundary, while implementations themselves
-                # disappear from the translated declaration lists.
-                output.append(a.D2Clocal(_list(private), _list(public)))
-                # Only implementations declared in the public part escape.
-                public_impls = tuple(d for d in _items(declaration.arg2)
-                                     if isinstance(d, a.D2Cimpl))
-                active = public_impls + active
             else:
                 raise FWATS3TemplateResolutionError(
                     f"Unsupported declaration {type(declaration).__name__}")
@@ -139,7 +129,7 @@ def d2exp_tmpres(expression: a.d2exp) -> a.d2exp:
     """Translate an expression into one without template uses.
 
     For a program represented as ``D2Elets``, implementations are resolved
-    according to declaration order and local scope. Missing implementations
+    according to declaration order and lexical scope. Missing implementations
     raise :class:`FWATS3TemplateResolutionError`.
     """
     return _Resolver().expression(expression, ())

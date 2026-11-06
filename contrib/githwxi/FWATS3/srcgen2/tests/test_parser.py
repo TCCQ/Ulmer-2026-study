@@ -148,9 +148,9 @@ class ParserTests(unittest.TestCase):
                          a.D2Elets(seq(a.D2Cbind("x", a.D2Eint(1))),
                                    a.fnoptn_cons(a.D2Evar("x"))))
 
-    def test_local_and_empty_lists(self):
-        self.assertEqual(libfile_parse("local in end"),
-                         seq(a.D2Clocal(seq(), seq())))
+    def test_declarations_and_empty_lists(self):
+        with self.assertRaises(FWATS3SyntaxError):
+            libfile_parse("local in end")
         self.assertEqual(libfile_parse("dec x[]: int; imp x[] = 1;"),
                          seq(a.D2Cdecl("x", seq(), con("int")),
                              a.D2Cimpl("x", a.D2Eint(1), seq(), seq())))

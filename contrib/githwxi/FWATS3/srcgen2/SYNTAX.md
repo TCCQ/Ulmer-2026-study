@@ -9,8 +9,8 @@ directional matching. See `README.md` for parser entry points and test commands.
 
 The design keeps single-argument functions and tuple arguments from the original
 LAMBDA syntax, and adds explicit static types, named constants, template
-applications, constant signature declarations, implementation declarations, and
-local declarations.
+applications, constant signature declarations, and implementation
+declarations.
 
 ## Lexical conventions
 
@@ -19,7 +19,7 @@ letter or underscore; subsequent characters may also include digits and `$`.
 For example, `foo$bar`, `x$1`, and `name$` are valid, while `$foo` is invalid.
 This rule applies to all identifier names, including static parameters and
 constant names. Keywords are case-sensitive and reserved: `lam`, `fix`, `if`, `then`, `else`, `let`, `in`, `end`, `val`,
-`dec`, `imp`, `local`, `true`, `false`, `D2CON`, `D2TCK`, and `D2ARG`.
+`dec`, `imp`, `true`, `false`, `D2CON`, `D2TCK`, and `D2ARG`.
 
 Whitespace and newlines separate tokens but otherwise have no meaning. `#`
 starts a comment through the end of the line, except inside a string.
@@ -60,7 +60,6 @@ declarations     = [ declaration { ";" declaration } [";"] ] ;
 declaration      = "val" identifier "=" expression
                  | "dec" identifier [signature-params] ":" type
                  | "imp" [static-params] identifier [static-args] "=" expression
-                 | "local" declarations "in" declarations "end" ;
 signature-params = "[" [ identifier { "," identifier } [","] ] "]" ;
 constant         = "@" identifier ;
 static-params    = "{" identifier { "," identifier } [","] "}" ;
@@ -309,7 +308,6 @@ cannot itself take static arguments: `a[int]` is invalid when `a` is bound.
 Omitting the parameter list, or writing `[]`, declares zero static parameters.
 Unused parameters are permitted in signatures. The declaration makes the
 constant signature available to subsequent declarations and the enclosing body,
-subject to the same private/exported regions as other declarations in `local`.
 It does not produce a runtime value or supply an implementation.
 
 This maps to the existing declaration variant
@@ -430,27 +428,6 @@ inference. Each implementation captures both its variable environment and its
 template environment before insertion. Matched static types are substituted
 into its body, which runs in those captured environments. Use `fix` for
 recursion. Functions likewise capture both environments at their definition.
-
-## Local declarations
-
-```text
-local
-  val helper = lam (x: int) => x + 1
-in
-  val exported = helper(41);
-  imp answer = exported
-end
-```
-
-This maps to `D2Clocal(private_declarations, exported_declarations)`. The proposed
-scope rule makes the first sequence visible within the second, and exports only
-the bindings, constant signatures, and implementations of the second sequence
-to subsequent code.
-Both sequences are ordered and may be empty. Functions exported from the second
-sequence must retain access to private bindings they capture.
-
-`local` is a declaration, not an expression. It can appear at top level or within
-a let declaration sequence. `let` exports no bindings outside its expression.
 
 ## Complete examples
 

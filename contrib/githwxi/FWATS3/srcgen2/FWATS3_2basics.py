@@ -260,12 +260,6 @@ class D2Cimpl(D2C000):
     arg4: s2explst
     ctag = "D2Cimpl"
 ########################################################################
-@dataclass
-class D2Clocal(D2C000):
-    arg1: d2eclist
-    arg2: d2eclist
-    ctag = "D2Clocal"
-########################################################################
 ########################################################################
 # end of
 # [Ulmer-2026-study/contrib/githwxi/FWATS3/srcgen1/FWATS3_2basics.py]

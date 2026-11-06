@@ -72,29 +72,6 @@ class TypeCheckerTests(unittest.TestCase):
             self.assertEqual(d2exp_tcheck(d2exp_parse(f"@{name}[sint](5)"), env), SINT)
             self.assertIn(name, env.implementations)
 
-    def test_local_exports_and_captures(self):
-        env = libfile_tcheck(libfile_parse("""
-            local
-                val hidden = 1;
-                dec helper: sint;
-                imp helper = hidden
-            in
-                val exposed = lam(u: ()) => @helper;
-                dec public: () -> sint;
-                imp public = exposed
-            end
-        """))
-        self.assertNotIn("hidden", env.variables)
-        self.assertNotIn("helper", env.constants)
-        self.assertNotIn("helper", env.implementations)
-        self.assertIn("public", env.implementations)
-        self.assertEqual(d2exp_tcheck(d2exp_parse("@public()"), env), SINT)
-        self.assertEqual(check("""
-            val x = 1;
-            local val x = true in val y = x end;
-            (x,y).1
-        """), BOOL)
-
     def test_nested_static_binders_do_not_capture(self):
         self.assertEqual(check("""
             dec outer[a]: a -> a;

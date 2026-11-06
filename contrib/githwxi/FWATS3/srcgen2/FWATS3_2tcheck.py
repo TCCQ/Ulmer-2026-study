@@ -328,7 +328,7 @@ class _Checker:
                 self.declaration(declaration, result, scope, exports)
             except FWATS3TypeError as error:
                 name = getattr(declaration, "arg1", "")
-                label = repr(name) if isinstance(name, str) else "local"
+                label = repr(name) if isinstance(name, str) else "declaration"
                 raise FWATS3TypeError(f"{declaration.ctag} {label}: {error}") from error
         return result, exports
 
@@ -354,18 +354,6 @@ class _Checker:
             _equal(self.expression(d.arg2, env, local), expected, "Implementation")
             env.implementations[d.arg1] = env.implementations.get(d.arg1, ()) + (d,)
             exports.implementations[d.arg1] = exports.implementations.get(d.arg1, ()) + (d,)
-        elif isinstance(d, a.D2Clocal):
-            private, _ = self.declarations(d.arg1, env, scope)
-            _, public = self.declarations(d.arg2, private, scope)
-            # An implementation of a private signature remains private as well.
-            for name, implementations in public.implementations.items():
-                if name in env.constants or name in public.constants:
-                    env.implementations[name] = env.implementations.get(name, ()) + implementations
-                    exports.implementations[name] = exports.implementations.get(name, ()) + implementations
-            env.variables.update(public.variables)
-            env.constants.update(public.constants)
-            exports.variables.update(public.variables)
-            exports.constants.update(public.constants)
         else:
             raise FWATS3TypeError(f"Unsupported declaration: {type(d).__name__}")
 

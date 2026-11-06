@@ -109,9 +109,7 @@ The implemented rules are:
   Static application currently requires a `D2Ecst`; templates are not
   first-class polymorphic values.
 - Declarations are sequential; variables may shadow previous bindings.
-  Duplicate visible constant signatures are rejected. Local declarations
-  expose only the public region; exported functions can capture private names.
-  Implementations of private signatures remain private.
+  Duplicate visible constant signatures are rejected.
 - Known constructors have checked arities (`sint`, `bool`, `string`: zero;
   `list`, `strm`, `stcn`, `optn`: one). Other constructors remain nominal and accept any
   arity because the AST has no type-constructor declarations.
@@ -175,9 +173,7 @@ The two environments have distinct roles:
   instantiates and evaluates its selected body anew; there is no memoization.
   Template references in an implementation body use the active template
   environment. Use `fix` for recursion, as in factorial and Fibonacci.
-- `dec` is erased at runtime. `local` evaluates the private region, then the
-  public region, and exports only public variable bindings and implementation
-  closures. Captured environments retain private dependencies.
+- `dec` is erased at runtime.
 
 Evaluation is eager, left to right; conditionals evaluate only the selected
 branch. Integer division uses Python floor division, and modulo uses Python

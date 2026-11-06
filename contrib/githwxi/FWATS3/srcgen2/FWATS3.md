@@ -143,7 +143,7 @@ The parser constructs `D2Elam`, `D2Efix`, `D2Eapp`, `D2Eif0`, `D2Etupl`,
 `D2Eproj`, and generic `D2Eopx(name, d2explst)` nodes directly. Unary signs use `D2Eop1`; binary operations use `D2Eop2`
 with their literal operator spelling. No expression is evaluated by parsing.
 
-### 2.4 Let and local declarations
+### 2.4 Let declarations
 
 `val` bindings are sequential: a binding is available to subsequent declarations
 and the body, but not to its own initializer. A later variable binding may
@@ -163,10 +163,6 @@ processes its declarations and returns unit. In the AST these forms are
 `D2Elets(declarations, fnoptn_cons(body))` and
 `D2Elets(declarations, fnoptn_nil())`, respectively.
 
-`local private_declarations in public_declarations end` is a declaration,
-represented by `D2Clocal`. Private declarations are visible while processing
-the public region. Only public declarations are exported. Exported closures
-retain access to private bindings through their captured environments.
 
 ## 3. Template declarations, implementations, and uses
 
@@ -470,28 +466,7 @@ subsequent dynamic function calls.
 
 ## 6. Worked template examples
 
-### 6.1 A private value captured by an implementation
-
-```fwats3
-dec zero[a]: a;
-local
-  val zi = 0
-in
-  imp zero[sint] = zi
-end;
-val zi = 1;
-@zero[sint]
-```
-
-The program has type `sint` and returns `0`.
-
-When the implementation is registered, its `denv` contains the private
-`zi = 0`. Leaving `local` exports the implementation closure but does not export
-the private variable. The later `val zi = 1` creates an outer binding.
-The final template use selects `zero[sint]`, whose body `zi` is evaluated in
-the captured environment containing zero.
-
-### 6.2 Resolving template references at invocation
+### 6.1 Resolving template references at invocation
 
 ```fwats3
 dec helper: sint;
@@ -605,10 +580,9 @@ constructors. Runtime list, option, and stream operations are provided by the
 template libraries in `mylib/`.
 
 At runtime, `dec` is erased, so lexical signature visibility is enforced by the
-checker rather than by `tenv`. In particular, the checker keeps private
-signatures inaccessible outside `local`; the interpreter tracks implementation
-closures and exports those created in the public region. Evaluate checked
-programs when relying on signature visibility rules.
+checker rather than by `tenv`. The checker validates signatures and
+implementations in declaration order; the interpreter tracks implementation
+closures.
 
 The test suites are `tests/test_parser.py`, `tests/test_tcheck.py`, and
 `tests/test_interp.py`. They cover parsing, type errors, generic implementations,

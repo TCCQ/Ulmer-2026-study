@@ -286,15 +286,6 @@ class _Interpreter:
                 closure = TemplateClosure(d, _snapshot(local))
                 implementations = (closure,) + implementations
                 exported_templates = (closure,) + exported_templates
-            elif isinstance(d, a.D2Clocal):
-                private_denv, private_tenv, _, _ = self.declarations(
-                    d.arg1, local, implementations)
-                _, _, public_denv, public_tenv = self.declarations(
-                    d.arg2, private_denv, private_tenv)
-                local.update(public_denv)
-                exported_variables.update(public_denv)
-                implementations = public_tenv + implementations
-                exported_templates = public_tenv + exported_templates
             else:
                 raise FWATS3RuntimeError(f"Unsupported declaration {type(d).__name__}")
         return _snapshot(local), implementations, exported_variables, exported_templates

@@ -1,0 +1,758 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\geometry{margin=1in}
+
+\lstdefinelanguage{FWATS3}{
+  morekeywords={val,lam,fix,if,then,else,let,in,end,dec,imp},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]"
+}
+\lstset{language=FWATS3,basicstyle=\ttfamily\small,columns=fullflexible,
+  keepspaces=true,frame=single,breaklines=true}
+
+\newcommand{\FWATS}{\textsc{Fwats3}}
+\newcommand{\Var}{\mathit{Var}}
+\newcommand{\Con}{\mathit{Con}}
+\newcommand{\Imp}{\mathit{Imp}}
+\newcommand{\matchsto}{\mathrel{\Downarrow_{\!m}}}
+
+\title{FWATS3: A Typed Core Language with Explicit Template Dispatch}
+\author{Draft}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\FWATS{} is a small expression language in which ordinary values and
+parameterized constants occupy distinct namespaces. A declaration gives a
+constant a type scheme, while one or more separately written implementations
+associate static patterns with expressions. A use supplies its static
+arguments explicitly; the implementation is selected by directional pattern
+matching and its body is instantiated before evaluation. The language combines
+this mechanism with annotated functions, recursion, tuples, sequential declarations,
+and a structural type checker. This paper introduces the language's central
+distinction, gives its core declaration and typing model, and describes the
+scope of the current interpreter. The present implementation is an executable
+prototype: implementation availability is a run-time property, dispatch is
+ordered, and the checker does not establish termination or implementation
+coverage.
+\end{abstract}
+
+\section{Introduction}
+
+Parameterized computation is often expressed with polymorphic functions,
+macros, type classes, or compiler specialization. These mechanisms differ in
+when a parameter is interpreted and how a concrete implementation is selected.
+\FWATS{} isolates one particular arrangement: a programmer declares the type
+of a named constant, writes implementations separately from that declaration,
+and explicitly supplies static arguments at each use. Implementations are
+selected by matching those arguments against ordered static patterns. The
+selected expression is then evaluated as an ordinary expression in a
+lexically captured value environment.
+
+This arrangement makes two forms of name resolution visible in the language.
+An unprefixed expression name denotes a dynamically bound variable; a name
+prefixed by \texttt{@} denotes a template constant. The former is resolved in
+the value environment, while the latter is resolved through a collection of
+implementation closures. A template constant is therefore neither an ordinary
+polymorphic value nor a macro that expands without regard to runtime scope.
+Static arguments choose an implementation; the resulting value can then be
+used as a conventional, monomorphic value, including as a function argument.
+
+The main example is the identity template:
+\begin{lstlisting}
+dec identity[a]: a -> a;
+imp{a} identity[a] = lam(x: a) => x;
+@identity[sint](42)
+\end{lstlisting}
+The declaration introduces a signature parameterized by the static variable
+\(a\). The implementation binds its own variable, also written \(a\), and
+matches that variable against the use-site argument \texttt{sint}. The
+implementation body is checked at type \texttt{sint -> sint} after the
+signature is instantiated, and evaluation returns \texttt{42}. The parameter
+names in the declaration and implementation are independently bound; their
+spelling does not connect the two scopes.
+
+\FWATS{} is designed to make the boundary between type-level selection and
+ordinary evaluation explicit and inspectable. Its prototype includes a
+recursive-descent parser, a structural type checker, and an interpreter over
+the same syntax tree. The central contribution of this draft is a precise
+account of that boundary. It is not a claim of a complete polymorphic type
+system: the current checker uses explicit static arguments, supports no
+first-class polymorphic template values, and checks each implementation
+against its signature without proving that every use has a matching
+implementation.
+
+\paragraph{Contributions.}
+This introduction presents (1) a source-level distinction between variables
+and template constants, (2) a declaration discipline separating signatures
+from pattern-indexed implementations, and (3) an execution model in which
+implementation bodies capture value bindings while resolving nested template
+uses in the active template environment. It also records the present
+implementation's limits so that the language design is not confused with
+properties the prototype does not guarantee.
+
+\section{Language overview}
+
+\subsection{Expressions and types}
+
+The ordinary expression fragment contains integer, Boolean, and string
+literals; annotated single-argument functions; recursive functions; function
+application; conditionals; tuples and projections; sequential \texttt{let}
+declarations; and primitive arithmetic and comparisons. An arrow type
+\(T_1 \to T_2\) describes a function taking one value of type \(T_1\) and
+returning a value of type \(T_2\). Multiple arguments are represented by one
+tuple argument. Types include named constructors, functions, and tuples. Static
+variables are introduced explicitly by declaration parameter lists; there is
+no type-variable inference.
+
+The core type constructors include \texttt{sint}, \texttt{bool},
+\texttt{string}, and unit \texttt{()}, together with unary constructors such
+as \texttt{list(T)}, \texttt{optn(T)}, \texttt{strm(T)}, and
+\texttt{stcn(T)}. The latter constructors are nominal. The implementation
+uses structural equality for types, so constructor names and ordered
+arguments must agree.
+
+\subsection{Signatures and implementations}
+
+A signature has the form
+\[
+  \texttt{dec } c[p_1,\ldots,p_n]\texttt{: }T.
+\]
+It introduces a template constant \(c\) and binds the static parameters
+\(p_i\) in \(T\). An implementation has the form
+\[
+  \texttt{imp}\{q_1,\ldots,q_m\}\ c[P_1,\ldots,P_n]
+  \texttt{ = }e.
+\]
+Its implementation parameters \(q_j\) scope over the patterns \(P_i\) and
+body \(e\). There is one pattern for each signature parameter, but the
+implementation may bind a different number of variables. For example,
+\texttt{identity[(x,y)]} can bind two implementation variables in one pattern
+for a signature with one static parameter.
+
+The checker first looks up the signature for \(c\), substitutes the
+implementation patterns for its signature parameters, then checks \(e\)
+against the resulting type. Implementation parameters are rigid type
+variables during this check. Every such parameter must occur in a pattern;
+the checker does not guess a concrete type to make an implementation body
+check. Thus a generic implementation that uses integer addition directly
+cannot type-check at an unconstrained type variable; it must use a separately
+declared operation template or specialize its pattern.
+
+\subsection{Explicit specialization and dispatch}
+
+A use supplies static arguments in brackets:
+\[
+  \texttt{@}c[T_1,\ldots,T_n].
+\]
+The checker instantiates the declared signature with these arguments. It does
+not select an implementation. During evaluation, the interpreter scans
+registered implementations of \(c\) from newest to oldest. It matches the
+entire pattern list against the entire argument list with one shared matching
+context. A pattern variable binds to a type; repeated occurrences must match
+structurally equal types. Constructors, function types, and tuples match
+componentwise. The first successful match is selected. The body is copied,
+substituted with the bindings, and evaluated.
+
+This dispatch rule makes declaration order observable when patterns overlap.
+There is no ranking by specificity, coherence check, or requirement that
+implementations be exhaustive. Static arguments must be explicit and ground
+at runtime. An ordinary function value produced by specialization can be
+passed to another function, but it has a fixed type: an unspecialized template
+is not a first-class polymorphic value.
+
+\section{Static checking and execution}
+
+\subsection{Structural type checking}
+
+The checker synthesizes a type for each expression. Function parameters are
+typed by their annotations; applications require the argument type to match
+the function domain; conditionals require a Boolean condition and equal
+branch types; tuples synthesize componentwise types; projections require an
+in-bounds tuple index. Recursive functions include an annotated result type,
+which the body must satisfy. Declarations are processed sequentially, so each
+declaration may refer to preceding declarations.
+
+The signature checker and the implementation dispatcher answer different
+questions. Given a declared signature for \(c\), a static application can be
+well-typed even when no implementation matches its arguments. Conversely,
+each registered implementation must independently satisfy the instantiated
+signature. This separation keeps the static rule simple, but shifts coverage
+and implementation availability to runtime.
+
+\subsection{Static environments and judgments}
+
+We make the checker state explicit with three environments. Let \(\Gamma\)
+map dynamic variables to types, let \(\Delta\) map template names to
+signatures \((\vec p,T)\), and let \(\Xi\) map static variables in the
+current scope to fresh type variables. We write
+\[
+  \Gamma;\Delta;\Xi \vdash e:T
+  \qquad\text{and}\qquad
+  \Xi \vdash_s T:T'
+\]
+for expression synthesis and static-type normalization, respectively. The
+normalization judgment resolves bound names through \(\Xi\), treats other
+names as constructors, normalizes \texttt{int} to \texttt{sint}, and checks
+the arities of the built-in type constructors. Equality of normalized types
+is structural: constructor names, function domains and codomains, and tuple
+components must agree in order.
+
+The literal, variable, abstraction, and application rules are conventional
+for a monomorphic simply typed lambda calculus with annotated parameters:
+\[
+\frac{}{\Gamma;\Delta;\Xi\vdash n:\texttt{sint}}
+\quad
+\frac{\Gamma(x)=T}{\Gamma;\Delta;\Xi\vdash x:T}
+\qquad
+\frac{\Gamma,x:T_1;\Delta;\Xi\vdash e:T_2}
+     {\Gamma;\Delta;\Xi\vdash\texttt{lam}(x:T_1)=>e:T_1\to T_2}
+\]
+\[
+\frac{\Gamma;\Delta;\Xi\vdash e_1:T_1\to T_2
+      \qquad \Gamma;\Delta;\Xi\vdash e_2:T_1}
+     {\Gamma;\Delta;\Xi\vdash e_1(e_2):T_2}.
+\]
+The rules for Booleans, strings, tuples, projection, conditionals, and
+operators enforce the constraints stated above: a conditional condition has
+type \texttt{bool} and both branches have one common type; primitive
+arithmetic takes \texttt{sint}; equality is limited to equal primitive
+types; and projection selects an in-bounds component of a tuple. A recursive
+function binds itself at the annotated type \(T_1\to T_2\), binds its
+parameter at \(T_1\), and checks its body against \(T_2\).
+
+For a declared signature \(\Delta(c)=(p_1,\ldots,p_n,T)\), static
+application is checked by substitution, independently of the implementation
+environment:
+\[
+\frac{\Delta(c)=(\vec p,T)
+      \qquad \Xi\vdash_s T_i:T_i'\ (1\leq i\leq n)}
+     {\Gamma;\Delta;\Xi\vdash \texttt{@}c[T_1,\ldots,T_n]:
+       [T_1'/p_1,\ldots,T_n'/p_n]T}.
+\]
+The number of supplied arguments must equal the signature arity. A zero
+parameter constant may also be written without brackets. Ordinary declarations
+are sequential: a \texttt{val} initializer is checked before its name is
+added to \(\Gamma\), and a \texttt{dec} extends \(\Delta\) only for later
+declarations. A \texttt{let} checks its declarations in sequence and then
+checks its body in the resulting environment; a bodyless \texttt{let} has
+unit type.
+
+For an implementation, let \(\Delta(c)=(\vec p,T)\), and let \(\vec q\)
+be fresh rigid variables for its own parameters. The checker normalizes its
+patterns \(\vec P\) under \(\Xi,\vec q\), requires every variable in
+\(\vec q\) to occur in those patterns, and checks the implementation body
+against the signature instantiated by those patterns:
+\[
+\frac{\Delta(c)=(\vec p,T)\quad
+      \operatorname{vars}(\vec P)=\vec q\quad
+      \Gamma;\Delta;\Xi,\vec q\vdash e:[\vec P/\vec p]T}
+     {\Gamma;\Delta;\Xi\vdash
+       \texttt{imp}\{\vec q\}\ c[\vec P]=e\ \mathsf{ok}}.
+\]
+Here \(\operatorname{vars}(\vec P)=\vec q\) abbreviates the requirement
+that every declared implementation parameter occurs at least once; patterns
+may of course contain repeated occurrences. The checker rejects duplicate
+signature parameters, duplicate implementation parameters, duplicate visible
+signatures, arity mismatches, unbound static variables, and bodies whose types
+do not match the instantiated signature. It accepts overlapping patterns.
+
+\subsection{Two environments}
+
+Evaluation uses a value environment \(\rho\) and an implementation
+environment \(\Theta\). The value environment maps variable names to values.
+Function closures capture both \(\rho\) and \(\Theta\) at their definition
+site. An implementation closure captures its definition-time value
+environment, but template references appearing in its body use the active
+implementation environment at the point of invocation. This distinction
+preserves private value dependencies while allowing the active collection of
+implementations to govern nested template calls.
+
+Evaluation is eager and left-to-right, except that a conditional evaluates
+only its chosen branch. Processing an implementation registers a closure and
+does not execute its body. A template application instantiates and evaluates
+the selected body afresh; the current interpreter does not memoize results.
+The expression evaluator and type checker are separate entry points, so a
+client is expected to check a program before evaluating it.
+
+\subsection{Pattern matching and template resolution}
+
+Static patterns are types in the same structural grammar: a variable, a
+constructor application, a function type, or a tuple type. Write
+\(P\matchsto T\theta\) when pattern \(P\) matches type \(T\) and produces
+substitution \(\theta\). A variable binds on its first occurrence and must
+be equal to its previous binding on every later occurrence. Constructors
+match only constructors with the same name and arity; their arguments match
+recursively. Function and tuple nodes match only the same node form, with
+ordered children matched recursively. Matching the vector of patterns uses
+one shared substitution:
+\[
+  (P_1,\ldots,P_n)\matchsto(T_1,\ldots,T_n)\theta.
+\]
+Consequently, \((a,a)\) matches \((\texttt{sint},\texttt{sint})\) with
+\(\theta=\{a\mapsto\texttt{sint}\}\), but does not match
+\((\texttt{sint},\texttt{bool})\). This is directional pattern matching,
+not symmetric unification: variables in the left-hand pattern bind, while
+right-hand variables are treated as literal type variables.
+
+At runtime, \(\Theta=[K_1,\ldots,K_n]\) is a newest-first sequence of
+implementation closures. Each closure \(K_i=(C_i,\rho_i)\) contains an
+implementation declaration \(C_i\) and the value environment captured when
+that implementation was registered. Write \(\mathit{name}(C_i)\),
+\(\mathit{pat}(C_i)\), and \(\mathit{params}(C_i)\) for its constant name,
+pattern vector, and declared implementation parameters.
+
+Before resolution, requested types are normalized (including the
+\texttt{int}/\texttt{sint} alias) and must be ground: no static variable may
+remain. Define a candidate match by
+\[
+  \mathit{candidate}(K_i,c,\vec T,\theta)
+  \quad\Longleftrightarrow\quad
+  \mathit{name}(C_i)=c\ \land\
+  \mathit{pat}(C_i)\matchsto\vec T\theta.
+\]
+The vector match requires equal lengths and threads one substitution through
+all patterns. A pattern variable binds to the corresponding requested type
+at its first occurrence. Each later occurrence succeeds only when the new
+requested type is structurally equal to the existing binding. Constructor
+nodes require equal names and arities; function and tuple nodes require the
+same form and recursively matching ordered components. Matching is
+directional: only variables in the left-hand pattern bind.
+
+Resolution selects the least sequence index that is a candidate match:
+\[
+\frac{
+  i=\min\{j\mid 1\leq j\leq n\ \land\
+                 \exists\theta'.\,\mathit{candidate}(K_j,c,\vec T,\theta')\}
+  \qquad
+  \mathit{candidate}(K_i,c,\vec T,\theta)
+  \qquad
+  \operatorname{dom}(\theta)=\operatorname{set}(\mathit{params}(C_i))
+}{\Theta\vdash c[\vec T]\Downarrow_R(K_i,\theta)}.
+\]
+Equivalently, every earlier closure either implements another constant or
+fails to match the complete argument vector. Entries for other constants do
+not affect priority. Well-typed programs satisfy the domain condition
+because each implementation parameter must occur in a pattern. A malformed
+directly constructed syntax tree that violates it raises a runtime error
+rather than causing the evaluator to choose a later implementation.
+
+If no closure matches, resolution has an explicit failure outcome:
+\[
+  \frac{\nexists i,\theta.\ \mathit{candidate}(K_i,c,\vec T,\theta)}
+       {\Theta\vdash c[\vec T]\Downarrow_R\mathsf{no\ match}}.
+\]
+The interpreter reports this outcome as a missing-implementation runtime
+error. Since the type checker does not inspect \(\Theta\), this failure is
+possible even when the static application is well-typed.
+
+After successful resolution, substitution \(\theta\) is applied to a fresh
+copy of the selected body. Evaluation uses the selected closure's captured
+value environment \(\rho_i\) and the active implementation environment
+\(\Theta\):
+\[
+\frac{\Theta\vdash c[\vec T]\Downarrow_R((C_i,\rho_i),\theta)
+      \qquad
+      \langle\theta(C_i.\mathit{body}),\rho_i,\Theta\rangle\Downarrow v}
+     {\langle\texttt{@}c[\vec T],\rho,\Theta\rangle\Downarrow v}.
+\]
+The caller's \(\rho\) does not replace the captured value environment.
+Conversely, nested template references see active \(\Theta\), not a template
+environment captured when \(C_i\) was registered. Bare \texttt{@c}
+abbreviates \texttt{@c[]} for a zero-parameter constant.
+
+Substitution traverses type annotations, nested static applications, and
+declarations in the body. On entering a nested \texttt{dec} or \texttt{imp},
+it removes mappings shadowed by that declaration's own static parameters.
+Requested types are ground, so this shadowing rule prevents capture without
+introducing free static variables. The source syntax tree is left unchanged;
+each use gets its own instantiated copy.
+
+Because \(\Theta\) is ordered newest first, dispatch priority follows source
+registration order in reverse: a later matching implementation takes
+precedence. The language currently has no overlap diagnostic or
+specificity-based ordering.
+
+\subsection{A resolution--evaluation commutation theorem}
+
+For a successful resolution, write
+\[
+  \mathit{resolve}(\Theta,c,\vec T)=(K_i,\theta),
+  \qquad K_i=(C_i,\rho_i),
+\]
+as an abbreviation for the successful resolution judgment
+\(\Theta\vdash c[\vec T]\Downarrow_R(K_i,\theta)\),
+and let \(\theta C_i.\mathit{body}\) denote capture-avoiding substitution
+into a fresh copy of the selected implementation body. The order of
+operations at a template reference is characterized by the following
+local correspondence theorem. Here \(\Theta\) is the effective environment
+at the occurrence being evaluated. It need not be the environment currently
+held by the caller: the body of an ordinary function closure is evaluated
+with the template environment captured when that function was created.
+
+\medskip
+\noindent\textbf{Theorem (template resolution commutes with evaluation).}
+Suppose \(\vec T\) is ground, resolution is defined and binds exactly the
+implementation parameters of \(C_i\), and both evaluations start with the
+same active template environment \(\Theta\). Subjudgments may extend that
+environment according to declaration scope. Then, for every value \(v\),
+\[
+  \langle\texttt{@}c[\vec T],\rho,\Theta\rangle\Downarrow v
+  \quad\Longleftrightarrow\quad
+  \langle\theta C_i.\mathit{body},\rho_i,\Theta\rangle\Downarrow v.
+\]
+In particular, resolving the reference before evaluating its selected body
+preserves its result. The caller's value environment \(\rho\) is irrelevant
+after resolution; the implementation's captured environment \(\rho_i\) is
+used on both sides of the correspondence. \hfill\(\square\)
+
+For example, if \texttt{f} is defined after \texttt{imp choose = 1}, its
+closure captures a template environment containing that implementation.
+Registering \texttt{imp choose = 2} later does not change the \(\Theta\)
+used to evaluate \texttt{@choose} inside \texttt{f}. The theorem therefore
+resolves that occurrence against the captured environment, where it selects
+the first implementation. Resolution against the later top-level environment
+would be a different judgment and is not covered by the theorem.
+
+\noindent\emph{Proof sketch.} For the forward direction, invert the big-step
+derivation for the template-reference expression. Its only successful rule
+first resolves \(c[\vec T]\), substitutes the resulting bindings into the
+selected body, and evaluates that body under \((\rho_i,\Theta)\). The
+resolution relation is deterministic because it chooses the least matching
+index and structural matching produces at most one binding for each pattern
+variable. For the reverse direction, apply the template-reference evaluation
+rule using the assumed resolution result and the given body evaluation. No
+other successful resolution can be chosen. This theorem is a direct property
+of the interpreter's semantics; it is not a proof of type preservation or
+termination.\par
+
+The result lifts to a demanded occurrence inside a call-by-value evaluation
+context: replacing that occurrence by its selected, instantiated body leaves
+the enclosing evaluation result unchanged, provided the surrounding context
+and the active environments are held fixed. The demand condition matters.
+The theorem does not authorize an eager whole-program pass that resolves
+every syntactic reference before evaluation. A reference in an unselected
+conditional branch is not evaluated, and a template reference inside a
+function body is reached only when that function is called. Such a global
+pass could report a missing implementation for code that the interpreter
+never demands. It could also choose a different implementation if it failed
+to preserve the environment at the occurrence.
+
+\subsection{Big-step evaluation}
+
+We write \(\langle e,\rho,\Theta\rangle\Downarrow v\) when expression
+\(e\) evaluates to value \(v\). Values include base literals, tuples,
+constructed values, and closures. The core closure rules are:
+\[
+\frac{}{\langle x,\rho,\Theta\rangle\Downarrow\rho(x)}
+\qquad
+\frac{}{\langle\texttt{lam}(x:T)=>e,\rho,\Theta\rangle
+  \Downarrow \langle\texttt{lam}(x:T)=>e,\rho,\Theta\rangle}
+\]
+\[
+\frac{\langle e_1,\rho,\Theta\rangle\Downarrow
+          \langle\texttt{lam}(x:T)=>e,\rho_0,\Theta_0\rangle
+      \quad \langle e_2,\rho,\Theta\rangle\Downarrow v_2
+      \quad \langle e,\rho_0[x\mapsto v_2],\Theta_0\rangle\Downarrow v}
+     {\langle e_1(e_2),\rho,\Theta\rangle\Downarrow v}.
+\]
+The recursive closure rule is analogous, with the closure itself bound to
+the recursive name as well as the argument name. Since both names must be
+distinct, the two bindings do not conflict. Calls evaluate the function and
+then the argument before entering the closure; the body uses the closure's
+captured environments.
+
+The conditional rules evaluate the condition first and evaluate only the
+selected branch. Tuple components and primitive operands evaluate left to
+right. Integers use Python floor division and remainder behavior in the
+prototype; division or modulo by zero is a runtime error. Runtime checks also
+reject invalid operator operands, non-function application, invalid tuple
+projections, and malformed constructed-value operations.
+
+For declarations, a \texttt{val} evaluates its initializer and extends the
+current value environment for later declarations. A \texttt{dec} has no
+runtime effect. An \texttt{imp} prepends a closure containing the
+implementation and a snapshot of the current value environment to
+\(\Theta\); its body is not evaluated at registration time. Thus an
+implementation can retain a private value from its definition site.
+An implementation closure captures the current value environment when it is
+registered; its body is not evaluated at registration time.
+
+\section{Surface language}
+
+The parser accepts a library as a sequence of declarations and a program as a
+sequence of declarations followed by one result expression. Semicolons
+separate declarations. The grammar below omits lexical details such as string
+escapes and operator precedence, which are conventional and documented in
+the implementation guide.
+
+\begin{verbatim}
+libfile       ::= declarations
+program       ::= declarations expression
+declarations  ::= [ declaration { ";" declaration } [";"] ]
+declaration   ::= "val" id "=" expression
+                | "dec" id ["[" [ids] "]"] ":" type
+                | "imp" ["{" ids "}"] id ["[" [types] "]"]
+                    "=" expression
+
+expression    ::= "lam" "(" id ":" type ")" "=>" expression
+                | "fix" id "(" id ":" type ")" ":" type
+                    "=>" expression
+                | "if" expression "then" expression "else" expression
+                | "let" declarations ["in" expression] "end"
+                | comparison
+comparison    ::= additive [cmp additive]
+additive      ::= multiplicative {("+" | "-") multiplicative}
+multiplicative::= unary {("*" | "/" | "%") unary}
+unary         ::= ("+" | "-") unary | postfix
+postfix       ::= atom {"(" [expression-list] ")" | "." integer
+                   | "[" [types] "]"}
+atom          ::= integer | string | "true" | "false" | id | "@" id
+                | generic-operator | parenthesized-expression
+generic-operator ::= "D2CON" "(" string {"," expression} [","] ")"
+                   | "D2TCK" "(" expression "," string ")"
+                   | "D2ARG" "(" expression "," expression ")"
+
+type          ::= type-atom ["->" type]
+type-atom     ::= id [constructor-arguments] | parenthesized-type
+constructor-arguments ::= "[" [types] "]"
+                         | "(" [types] ")"
+parenthesized-expression ::= "(" [expression
+                              ["," [expression-list] ] ] ")"
+parenthesized-type ::= "(" [type ["," [types]]] ")"
+expression-list ::= expression {"," expression} [","]
+types         ::= type {"," type} [","]
+ids           ::= id {"," id} [","]
+\end{verbatim}
+
+In this compact grammar, \texttt{cmp} denotes one of \texttt{<},
+\texttt{>}, \texttt{<=}, \texttt{>=}, \texttt{==}, or \texttt{!=};
+parenthesized forms also distinguish grouping, unit, singleton tuples, and
+tuples by the presence of commas. The parser gives calls, projections, and
+static application a shared postfix precedence, then unary operators,
+multiplication, addition, and non-chainable comparisons. A syntactic static
+application may follow any postfix expression, but the checker and evaluator
+currently require its target to be a template constant. The grammar describes
+the accepted source shape; it does not imply that every syntactically
+representable AST is well typed.
+
+An identifier in a type is a static variable only when bound by an enclosing
+signature or implementation parameter list; otherwise it is a named type
+constructor. In expression position, an unprefixed identifier is a dynamic
+variable, while \texttt{@id} denotes a template constant. A function accepts
+one dynamic argument; a tuple packages multiple components into that single
+argument. The parser builds an explicit level-2 syntax tree and does not
+perform type checking or evaluation.
+
+\section{Declaration checking}
+
+The checking environment is extended from left to right. A value declaration
+\texttt{val x = e} first synthesizes \(T\) for \(e\), then binds
+\(x:T\). Thus a declaration cannot refer to its own newly introduced name,
+although it may refer to earlier names. A signature
+\texttt{dec c[\(\vec p\)]:T} creates fresh internal identities for its
+parameters, normalizes \(T\) under those bindings, and records the resulting
+signature. Fresh identities prevent accidental capture when nested scopes
+reuse the same source spelling. A second visible declaration of the same
+constant is rejected; dynamic variables may shadow earlier dynamic variables.
+
+For \texttt{imp\{\(\vec q\)\} c[\(\vec P\)] = e}, the checker requires
+that \(c\) already have a signature, that the pattern vector have the
+signature's arity, and that every rigid implementation parameter occur in a
+pattern. It substitutes the normalized patterns for the signature
+parameters, then checks \(e\) against the resulting type under the
+implementation's static scope. This is an independent check of each
+implementation; it neither checks dispatch coverage nor rejects overlaps.
+
+Declarations are processed sequentially in one environment. The checker has
+no declaration form for introducing a nested visibility region.
+
+\section{Worked examples}
+
+\subsection{Generic factorial over a template interface}
+
+The numeric library declares constants for zero and one, conversion from an
+integer, comparisons, and arithmetic. The core factorial implementation is:
+\begin{lstlisting}
+dec f0_1[a]: () -> a;
+dec f1_lte[a]: (a, a) -> bool;
+dec f1_sub[a]: (a, a) -> a;
+dec f1_mul[a]: (a, a) -> a;
+
+dec f1_fact[a]: a -> a;
+imp{a} f1_fact[a] =
+let
+  val one = @f0_1[a]()
+in
+  fix fact(n: a): a =>
+    if @f1_lte[a](n, one) then one
+    else @f1_mul[a](n, fact(@f1_sub[a](n, one)))
+end;
+\end{lstlisting}
+The type checker verifies the body using only the signatures of
+\texttt{f0\_1}, \texttt{f1\_lte}, \texttt{f1\_sub}, and
+\texttt{f1\_mul}. The implementation of factorial is consequently valid for
+any static type \(a\) for which those constants are declared, without
+assuming that \(a\) is an integer. To run it, matching numeric
+implementations must exist for the requested type. For \texttt{sint},
+\texttt{@f1\_fact[sint](5)} evaluates to \texttt{120}. This example
+illustrates the distinction between signature-level checking and run-time
+availability of a whole family of operations.
+
+The types do not establish the algebraic laws expected of the numeric
+operations, nor that the input is nonnegative. The supplied recursive
+definition does not memoize results, and its termination is not proved by the
+checker.
+
+\subsection{Overlapping patterns and priority}
+
+Consider two implementations of the same signature:
+\begin{lstlisting}
+dec choose[a,b]: () -> sint;
+imp{x,y} choose[x,y] = lam(u: ()) => 1;
+imp{x} choose[x,x] = lam(u: ()) => 2;
+\end{lstlisting}
+Both bodies satisfy the signature. The second implementation is registered
+later and is therefore examined first. It matches equal arguments, so
+\texttt{@choose[sint,sint]()} returns \texttt{2}; for unequal arguments its
+pattern fails and the earlier general implementation returns \texttt{1}.
+Reversing the declarations changes the result for equal arguments. This is a
+deterministic ordered-dispatch policy, but it is sensitive to declaration
+order and is not a coherence or most-specific-instance discipline.
+
+\subsection{Algebraic values and streams}
+
+The libraries represent lists and options as named constructor values. The
+generic expression \texttt{D2CON("list\_cons", h, t)} creates a value with an
+ordered pair of fields; \texttt{D2TCK(v,"list\_cons")} tests its tag, and
+\texttt{D2ARG(v,0)} extracts its head. The static checker recognizes the
+supported list, option, and stream constructor cases and checks their
+arguments. These operations do not introduce a user-extensible datatype
+declaration mechanism, and the interpreter represents constructor identity
+with runtime names and ordered fields.
+
+A stream of elements of type \(a\) is represented as a delayed unit function
+that returns a stream-constructor node. Applying a stream to \texttt{()} is
+the force operation; its result has type \texttt{stcn(a)}. The supplied
+stream library builds the delayed node with \texttt{strm\_cons}. Forcing is
+not memoized: evaluating the thunk again recomputes the node. This is a
+concrete representation convention enforced by the checker for stream
+application, rather than a general lazy evaluation strategy.
+
+\section{Implementation and validation status}
+
+The prototype is written in Python 3.12 using only the standard library. Its
+front end parses concrete source into level-2 dataclasses. Static types and
+expressions share a small syntax-tree representation; source locations are
+retained by parser errors but are not stored on the resulting trees. The
+checker produces an independent type environment and does not rewrite the
+program. The interpreter then evaluates the same tree using explicit closure
+records and immutable snapshots of the variable and template environments.
+
+The implementation is divided into modules for AST definitions, parsing,
+structural equality and matching, type checking, and interpretation. Library
+files demonstrate integer operations, generic factorial and Fibonacci, list
+and option templates, and stream constructors. The repository includes
+separate unit-test suites for parsing, type checking, and interpretation. The
+test descriptions cover static scope, generic implementations, nested
+substitution, private closure dependencies, overlapping-pattern order, and
+example-library execution. This draft has not measured performance or
+compared the interpreter against a compiler; no such claims are made.
+
+The execution pipeline is therefore:
+\[
+  \text{source}\longrightarrow\text{AST}
+  \longrightarrow\text{type check}
+  \longrightarrow\text{interpret}.
+\]
+The stages are callable independently. In particular, the interpreter does
+not invoke the checker automatically. A client that evaluates unchecked
+syntax may encounter runtime errors for unbound variables, absent template
+implementations, malformed constructor access, invalid arithmetic operands,
+or division by zero.
+
+\section{Relation to prior work}
+
+\FWATS{} uses terminology and design concerns that also occur in ATS,
+including static parameters, templates, and the distinction between static
+and dynamic computation. ATS is a substantially richer language and type
+system: its formal foundations treat statics and dynamics as separate
+components and study dependent types and programming with theorem-proving
+\cite{xi-ats-foundation}. The ATS programming materials also describe
+template-based genericity and late-binding in a compiler-oriented setting
+\cite{ats-template-doc}. The present prototype should not be read as an ATS
+implementation or a formal subset of ATS. Its static language is limited to
+structural type expressions, and its templates are resolved by a small
+run-time interpreter over explicitly supplied ground arguments.
+
+At a broad level, the signature/implementation split also invites comparison
+with type classes and modular dispatch systems. The operational distinction
+here is explicit and intentionally narrow: the checker uses a declared
+signature without selecting an implementation, while the interpreter
+selects the newest matching implementation in a runtime environment. This
+draft does not claim that the mechanism is novel relative to those systems;
+establishing a more exact comparison requires a focused study of coherence,
+instance selection, and separate compilation in the relevant languages.
+
+\section{Limitations and next steps}
+
+Several omissions define the current research boundary. Static arguments are
+explicit; template values are not first-class; constructor declarations are
+built in rather than user-defined; and no inference or specificity ordering
+is provided. The checker does not guarantee a matching implementation,
+termination, absence of division by zero, or semantic laws for user-supplied
+operations. Integer division follows Python floor-division semantics.
+Recursive evaluation is subject to Python's recursion limit and has no tail
+call optimization. Source locations are not available to type and runtime
+errors after parsing.
+
+A fuller formal account should next establish metatheoretic properties for a
+precisely delimited core, or explicitly characterize which failures are
+intended runtime outcomes. In particular, useful extensions include a
+well-formedness condition connecting checked declarations to runtime
+implementation environments, a proof that successful resolution preserves
+the declared result type, diagnostics for overlapping patterns, and a
+mechanized account of closure capture. Any change from
+ordered dispatch to coherence or specificity-based selection would alter
+observable program behavior and should be treated as a language-design
+decision.
+
+\section{Conclusion}
+
+This draft has described FWATS3 as a typed expression language with explicit
+static arguments and separately registered implementations. Its operational
+model makes template resolution a first-match search over an ordered runtime
+environment, while its type checker validates implementation bodies against
+instantiated signatures without proving implementation coverage. The result
+is a compact executable setting in which to study the interaction of
+structural type checking, pattern-directed specialization, lexical value
+capture, and dynamic template resolution. The current implementation is a
+prototype rather than a verified language implementation; the semantics and
+limitations stated here are intended to guide a more complete formalization.
+
+\begin{thebibliography}{9}
+\bibitem{xi-ats-foundation}
+Hongwei Xi.
+\newblock Applied Type System: An Approach to Practical Programming with
+Theorem-Proving.
+\newblock Manuscript on the formal foundations of ATS, 2016.
+\newblock \url{https://www.cs.bu.edu/~hwxi/atslangweb/MYDATA/ATSfoundation.pdf}.
+
+\bibitem{ats-template-doc}
+ATS Documentation Project.
+\newblock Introduction to Programming in ATS, section on parametric
+polymorphism and template-based programming.
+\newblock \url{https://ats-lang.github.io/FROZEN000/DOCUMENT/INT2PROGINATS/HTML/HTMLTOC/c1126.html}.
+\end{thebibliography}
+
+\end{document}
