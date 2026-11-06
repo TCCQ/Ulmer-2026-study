@@ -1,0 +1,15 @@
+# Generic factorial-like fold. Changing fact_mult and fact_mult_unit to
+# addition and zero makes gfact(n) return 1 + ... + n.
+# Load mylib/1.fwats3 before checking/evaluating this program.
+
+dec fact_mult[a]: (a, a) -> a;
+dec fact_mult_unit[a]: () -> a;
+dec gfact[a]: a -> a;
+
+imp{a} gfact[a] =
+  fix gfact_fn(n: a): a =>
+    if @f1_lte[a](n, @fact_mult_unit[a]()) then
+      @fact_mult_unit[a]()
+    else
+      @fact_mult[a](n,
+        gfact_fn(@f1_sub[a](n, @f0_1[a]())));

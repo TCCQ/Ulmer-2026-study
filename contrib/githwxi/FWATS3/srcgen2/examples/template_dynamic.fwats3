@@ -1,0 +1,14 @@
+# Template implementations are selected from the active template environment
+# when a template reference is evaluated. `saved` was defined while helper
+# returned 10, but its reference to helper resolves after helper is rebound.
+
+dec helper: sint;
+imp helper = 10;
+
+dec saved: sint;
+imp saved = @helper;
+
+imp helper = 20;
+
+# Both expressions return 20: saved resolves helper dynamically at invocation.
+(@saved, @helper)
