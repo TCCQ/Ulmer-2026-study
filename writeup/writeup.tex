@@ -39,6 +39,8 @@
 \newcommand{\kstar}{\mathrm{Type}}
 \newcommand{\ldb}{[\![}
     \newcommand{\rdb}{]\!]}
+\newcommand{\la}{\langle}
+\newcommand{\ra}{\rangle}
 \newcommand{\lda}{\langle\!\langle}
 \newcommand{\rda}{\rangle\!\rangle}
 \newcommand{\ve}{\varepsilon}
@@ -48,13 +50,15 @@
 \newcommand{\hole}{\bullet}
 \newcommand{\st}{\,.\,}
 \newcommand{\cl}{{\colon}}
-\newcommand{\closure}[3]{\langle #1 ,\, #2 , \, #3 \rangle}
 \newcommand{\subst}[2]{\mathbf{subst}(#1 ,\, #2)}
 \newcommand{\match}[2]{\mathbf{match}(#1 ,\, #2)}
 \newcommand{\pp}{{+}\!{+}}
 
-\newcommand{\tob}{\rightarrow_{\beta}}
-\newcommand{\tog}{\rightarrow_{\gamma}}
+\newcommand{\da}{\Downarrow}
+\newcommand{\vd}{\vdash}
+
+%% \newcommand{\tob}{\rightarrow_{\beta}}
+%% \newcommand{\tog}{\rightarrow_{\gamma}}
 
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{lemma}[theorem]{Lemma}
@@ -70,7 +74,7 @@
 %% \section{Dynamic Language}
 \section{Terms and Evaluation}
 
-Let $x,y,z$ range over terms, $T,X,Y$ be names of types. We assume $\alpha$-renaming has been done everywhere where necessary to avoid name collision. We sometimes write $\vec{a}_n$ and $(a_1,a_2,\dots,a_n)$ interchangably to reduce the number of symbols. Parenthesis exist only in the meta language for grouping, they have no semantic significance so $\langle (a_1,a_2)\rangle$ is equivalent to $\langle a_1, a_2\rangle$ for all sets of delimiting pairs.
+Let $x,y,z$ range over terms, $T,X,Y$ be names of types. We assume $\alpha$-renaming has been done everywhere where necessary to avoid name collision. Parenthesis exist only in the meta language for grouping, they have no semantic significance.
 
 Terms may be one of the following:
 \begin{itemize}
@@ -78,129 +82,261 @@ Terms may be one of the following:
 \item Variable: $x$
 \item Application: $MN$ for terms $M$ and $N$
 \item Template Declaration: $\Phi n\cl w . M$ for term $M$
-\item Template Implementation: $\tau \{\vec{a}\}n\langle\vec{X}\rangle = M \st N$ for terms $M$ and $N$
-\item Template Use: $\gamma\langle\vec{X}\rangle$
+\item Template Implementation: $\tau \{\vec{a}\}n\langle X\rangle = M \st N$ for terms $M$ and $N$
+\item Template Use: $\gamma\langle X\rangle$
 \end{itemize}
 
 We will assume for the evaluation that the term is well typed and that for all template uses the search terminates successfully. \todo{This is motivated below}. We will eshew writing types.
 
-Let $E$ be the set of all terms and $V$ be the set of all terms that do not contain a template use (ie. a $\gamma$ term). \todo{technically they could be in the unevaluated part of a $\tau$}.
+We show several variants on evaluation on this language based on different notions of capturing. We write $\ve(x)$ for the value associated with $x$ in environment $\ve$. We write $\ve \vdash e \da v$ for $e$ evaluating to value $v$ in environment $\ve$. We wrinte $\ve[x \to V]$ for environment $\ve$ altered such that $x$ points to $V$. We write $x\pp xs$ for prepending $x$ to ordered container $xs$, where the empty container is $\emptyset$. Note that $\langle\rangle$ has both syntactic meaning and is used for closures, though the contexts are disjoint. We assume the $\de(n) = \emptyset \forall n$ initially.
 
-Let $\tob$ be a binary relation on terms. Specifically
+We first present variants where the static argument of a template must match exactly for simplicity. \todo{This can be loosened to type unification.}
+
+\subsection{Full Capturing}
+
+We assume tempate names ($n,n_1,\dots$) are disjoint from term names $x,y,\dots$.
+
+In this mode both lambdas and templates capture the current state of both the dynamic (value) and static (template) environments:
 \begin{displaymath}
-  \begin{array}{cc}
+  \begin{array}{c}
     \begin{prooftree}
-      \hypo{N\in V}
-      \infer1{(\lambda x \st M)N \tob M[N/x]} 
-    \end{prooftree}
-    &
-    \begin{prooftree}
-      \hypo{M \tob M'}
-      \infer1{(\lambda x \st M) \tob \lambda x \st M'} 
+      \hypo{\ve(x) = V}
+      \infer1{\ve,\de \vd x \da V}
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
-      \hypo{M \tob M'}
-      \hypo{N \tob N'}
-      \infer2{MN \tob M'N'} 
-    \end{prooftree}
-    &
-    \begin{prooftree}
-      \hypo{M \tob M'}
-      \infer1{(\Phi n \st M) \tob \Phi n \st M'} 
+      \infer0{\ve ,\de \vd \lambda x\cl T\st t \da \la \lambda x\cl T\st t , \ve, \de \ra}
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
-      \hypo{M \tob M'}
-      \infer1{\tau n = N \st M \tob \tau n = N \st M'} 
+      \hypo{\ve,\de \vd t_1 \da \la \lambda x \cl T\st t, \ve', \de' \ra}
+      \hypo{\ve,\de \vd t_2 \da V_2}
+      \hypo{\ve'[x \to V_2],\de' \vd t \da V}
+      \infer3{\ve,\de \vd t_1t_1 \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\ve,\de[n \to \emptyset] \vd e \da V}
+      \infer1{\ve,\de \vd \Phi n \cl W \st e \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\de(n) = rs}
+      \hypo{\ve,\de[n \to \lda \tau n\la X\ra = e , \ve, \de \rda \pp rs] \vd e_2 \da V}
+      \infer2{\ve,\de \vd \tau n\la X\ra = e . e_2 \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\de(n) = \lda \tau n\la X\ra = e , \ve', \de' \rda \pp \hole}
+      \hypo{\ve',\de' \vd e \da V}
+      \infer2{\ve,\de\vd \gamma n \la X \ra \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\de(n) = \lda \tau n\la Y\ra = \hole , \hole, \hole \rda \pp rs}
+      \hypo{X \neq Y}
+      \hypo{\lda \tau n\la X\ra = e , \ve', \de' \rda \in rs}
+      \hypo{\ve',\de' \vd e \da V}
+      \infer4{\ve,\de\vd \gamma n \la X \ra \da V}
     \end{prooftree}
   \end{array}
 \end{displaymath}
-Intuatively $\tob$ allows some nonzero amount of beta reduction in the term. Note that beta reduction may only substitute terms which do not contain templates, ie cannot change the template environment of the substituted term. 
 
-We also take $\tog$ to be a binary relation on terms representing the resolution of templates. Specifically:
+\subsection{One-Sided Capturing}
+
+Consider this variant where value closures capture both environments, but template closures capture only the dynamic environment:
+
+Same as Full capturing:
 \begin{displaymath}
-  \begin{array}{cc}
+  \begin{array}{c}
     \begin{prooftree}
-      \hypo{M \in E}
-      \hypo{\de \vdash n\  \mathrm{resolves\ to}\ M}
-      \infer2{\vdash \gamma n\langle\dots\rangle \tog M}
-    \end{prooftree}
-    &
-    \begin{prooftree}
-      \hypo{\de \vdash M \tog M'}
-      \infer1{(\de \vdash \lambda x \st M) \tog \lambda x \st M'} 
+      \hypo{\ve(x) = V}
+      \infer1{\ve,\de \vd x \da V}
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
-      \hypo{\de \vdash M \tog M'}
-      \hypo{\de \vdash N \tog N'}
-      \infer2{\de \vdash MN \tog M'N'} 
-    \end{prooftree}
-    &
-    \begin{prooftree}
-      \hypo{\de,\Phi n \vdash M \tog M'}
-      \infer1{\de \vdash (\Phi n \st M) \tog \Phi n \st M'} 
+      \infer0{\ve ,\de \vd \lambda x\cl T\st t \da \la \lambda x\cl T\st t , \ve, \de \ra}
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
-      \hypo{\de,(\tau n = N) \vdash M \tog M'}
-      \infer1{\de \vdash (\tau n = N \st M) \tog \tau n = N \st M'} 
+      \hypo{\ve,\de \vd t_1 \da \la \lambda x \cl T\st t, \ve', \de' \ra}
+      \hypo{\ve,\de \vd t_2 \da V_2}
+      \hypo{\ve'[x \to V_2],\de' \vd t \da V}
+      \infer3{\ve,\de \vd t_1t_1 \da V}
     \end{prooftree}
-    &
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\ve,\de[n \to \emptyset] \vd e \da V}
+      \infer1{\ve,\de \vd \Phi n \cl W \st e \da V}
+    \end{prooftree}
   \end{array}
 \end{displaymath}
-where $M$ in the first rule is determined by the template search \todo{described below}, and may contain further templates.
 
-\begin{lemma}[V preservation]
-  \label{v-pres}
-  If $M \tob N$ and $M\in V$ then $N\in V$.
-\end{lemma}
-\begin{proof}
-  We have this by definition, no rule introduces new $\gamma$ terms.
-\end{proof}
+Altered to only capture $\ve$:
+\begin{displaymath}
+  \begin{array}{c}
+    \begin{prooftree}
+      \infer0{\ve,\de \vd \tau n\la X\ra = e \da \lda \tau n\la X\ra = e , \ve\rda}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\de(n) = rs}
+      \hypo{\ve,\de[n \to \lda \tau n\la X\ra = e , \ve, \de \rda \pp rs] \vd e_2 \da V}
+      \infer2{\ve,\de \vd \tau n\la X\ra = e . e_2 \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{\de(n) = \lda \tau n\la Y\ra = \hole , \hole\rda \pp rs}
+      \hypo{X \neq Y}
+      \hypo{\lda \tau n\la X\ra = e , \ve' \rda \in rs}
+      \hypo{\ve',\de \vd e \da V}
+      \infer4{\ve,\de\vd \gamma n \la X \ra \da V}
+    \end{prooftree}
+  \end{array}
+\end{displaymath}
 
-Let $\tob^*$ and $\tog^*$ be the transitive reflexive closures of $\tob$ and $\tog$ respectively. Let $\de$ be the template environment accumulated by recursively descending through $\Phi$ and $\tau$ constructors (only the second subterm in the $\tau$ case). 
+%% \begin{displaymath}
+%% \begin{array}{@{}l@{\quad}c@{\quad}c@{}}
+%% \text{term} & \text{Full capturing} & \text{One-sided capturing}\\
+%% \hline
+%% \begin{array}{l}
+%% \Phi m{:}W.\,\Phi n{:}W.\,
+%% \tau m\langle A\rangle=V_1.\,
+%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
+%% \qquad \tau m\langle A\rangle=V_2.\,
+%% \gamma(n\langle A\rangle)
+%% \end{array}
+%% & V_1 & V_2
+%% \\[3mm]
+%% \begin{array}{l}
+%% \Phi n{:}W.\,
+%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\,
+%% \Phi m{:}W.\,
+%% \tau m\langle A\rangle=V_1.\,
+%% \gamma(n\langle A\rangle)
+%% \end{array}
+%% & \mathsf{stuck} & V_1
+%% \\[3mm]
+%% \begin{array}{l}
+%% \Phi m{:}W.\,\Phi n{:}W.\,
+%% \tau m\langle A\rangle=V_1.\,
+%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
+%% \qquad \Phi m{:}W.\,
+%% \gamma(n\langle A\rangle)
+%% \end{array}
+%% & V_1 & \mathsf{stuck}
+%% \end{array}
+%% \end{displaymath}
 
-\begin{lemma}[lambda commutivity]
-  \label{l-comm}
-  In environment $\de$, if $M_1 = (\lambda x \st N)K$ with $N \in E$, $K\in V$, and $M_1 \tob M_2 \tog^* M_3$, then $M_1 \tog^* M_1' \tob M_3$ for some $M_1'$.
-\end{lemma}
-\begin{proof}
-  Let $N \tob N'$ and $K' \in E$ with $K \tob K'$. Then we know $M_2 = N'[K'/x]$ by the definition of $\tob$.
+%% Demonstrating late binding:
+%% \begin{displaymath}
+%% \begin{array}{@{}l@{\quad}c@{\quad}c@{}}
+%% \text{term} & \text{Full capturing} & \text{One-sided capturing}\\
+%% \hline
+%% \begin{array}{l}
+%% \tau n\langle A\rangle=\gamma(n\langle B\rangle).\\
+%% \tau n\langle B\rangle=\gamma(m\langle B\rangle).\\
+%% \tau m\langle B\rangle=V_1.\\
+%% \gamma(n\langle A\rangle)
+%% \end{array}
+%% & \mathsf{stuck} & V_1
+%% \end{array}
+%% \end{displaymath}
 
-  We have by \ref{v-pres} that $K'\in V$. Thus we know that $M_3 = N''[K'/x]$ for some $N'' \in E$, such that $N' \tog N''$, as the only possible $\gamma$ resolution that might occur must be in $N'$ as $K'$ is $\gamma$ free. Thus we have that $M_1 \tog^* (\lambda x\st S)K$ for some $S\in E$ with $S \tog^* N''$.
-\end{proof}
+\subsection{Dynamic Dispatch}
 
-\begin{lemma}
-  If $\de \vdash M_1 \tob^* M_2 \tog^* M_3$, then $\de \vdash M_1 \tog^* M_1' \tob^* M_3$ for some $M_1'$. \\
-  Visually:\\
-\begin{tikzpicture}[scale=0.5]
-  \node (A) at (0,3) {$M_1$};
-  \node (B) at (3,3) {$M_2$};
-  \node (C) at (0,0) {$M_1'$};
-  \node (D) at (3,0) {$M_3$};
+Let $E$ be a single tagged environment with disjoint term/template names.
+Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
 
-  \draw[->] (A) -- node[below] {$\tob^*$} (B);
-  \draw[->] (C) -- node[above] {$\tob^*$} (D);
-  \draw[->] (A) -- node[left]  {$\tog^*$} (C);
-  \draw[->] (B) -- node[right] {$\tog^*$} (D);
-\end{tikzpicture}    
+\begin{displaymath}
+  \begin{array}{c}
+    \begin{prooftree}
+      \hypo{E(x) = V}
+      \infer1{E \vd x \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{E\vd \lambda x\cl T\st t\da V}
+      \infer1{E \vd x \da \la \lambda x \cl T \st t , E\ra}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{E[n\to \emptyset] \vd e \da V}\
+      \infer1{E \vd \Phi n \cl W \st e \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{E(n) = rs}
+      \hypo{E[n \to \lda \tau n\la X\ra = e, E^\ve \rda \pp rs] \vd N \da V}
+      \infer2{E \vd \tau n \la X \ra = e \st N \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{E(n) = \lda \tau n \la X \ra = e, E^\ve_0 \rda \pp \hole}
+      \hypo{E^\ve_0 \uplus E^\de \vd e \da V}
+      \infer2{E \ve \gamma n\la X\ra \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
+      \hypo{E(n) = \lda \tau n \la X \ra = \hole, \hole \rda \pp rs}
+      \hypo{X \neq Y}
+      \hypo{E^\ve \uplus \left. E^\de \right|_n = rs \vd e \da V}
+      \infer3{E \ve \gamma n\la Y\ra \da V}
+    \end{prooftree}
+  \end{array}
+\end{displaymath}
 
-\end{lemma}
-\begin{proof}
-  We prove this by induction on $M_1$. Let $P(\de, N)$ designate the stated property for enviornment $\de$ and $M_1=N$.
-  \begin{itemize}
-  \item If $M_1 = x$ for some variable $x$ then this is trivially true.
-  \item  If $M_1 = \lambda x \st N$ where $P(\de,N)$ this is true by definition of $\tob$ and $\tog$.
-  \item  If $M_1 = \Phi n \st N$ where $P((\de,\Phi n), N)$, this is true by definition.
-  \item  If $M_1 = (\tau n = M \st N)$ where $P((\de,\tau n=M), N)$, then this is true by definition.
-  \item If $M_1 = LR$ where $P(\de,L)$ and $P(\de,R)$: Either $L\neq
-    \lambda x \st N$ for any $N$, in which case this is true by
-    induction, or  $L = \lambda x \st N$. In the later case $\beta$ reduction in only possible if $R \in V$. Thus the hypothesis holds by \ref{l-comm}. If $R \not\in V$, then top level commutativity is trivial.
-  \end{itemize}
-\end{proof}
 
+\subsection{Examples}
+
+\[
+\begin{array}{@{}l@{\quad}c@{\quad}c@{\quad}c@{}}
+\text{term} & \text{Full} & \text{One-sided} & \text{Dynamic dispatch}\\
+\hline
+\begin{array}{l}
+\Phi m{:}W.\,\Phi n{:}W.\,
+\tau m\langle A\rangle=V_1.\,
+\tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
+\qquad \tau m\langle A\rangle=V_2.\,
+\gamma(n\langle A\rangle)
+\end{array}
+& V_1 & V_2 & V_2
+\\[3mm]
+\begin{array}{l}
+\Phi n{:}W.\,
+\tau n\langle A\rangle=\gamma(m\langle A\rangle).\,
+\Phi m{:}W.\,
+\tau m\langle A\rangle=V_1.\,
+\gamma(n\langle A\rangle)
+\end{array}
+& \mathsf{stuck} & V_1 & V_1
+\\[3mm]
+\begin{array}{l}
+\Phi m{:}W.\,\Phi n{:}W.\,
+\tau m\langle A\rangle=V_1.\,
+\tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
+\qquad \Phi m{:}W.\,
+\gamma(n\langle A\rangle)
+\end{array}
+& V_1 & \mathsf{stuck} & \mathsf{stuck}
+\end{array}
+\]
+
+\[
+\begin{array}{@{}l@{\quad}c@{\quad}c@{\quad}c@{}}
+\text{term} & \text{Full} & \text{One-sided} & \text{Dynamic dispatch}\\
+\hline
+\begin{array}{l}
+\tau n\langle A\rangle=\gamma(n\langle B\rangle).\;
+\tau n\langle B\rangle=\gamma(m\langle B\rangle).\\
+\tau m\langle B\rangle=V_1.\;
+\gamma(n\langle A\rangle)
+\end{array}
+& \mathsf{stuck} & V_1 & V_1
+\end{array}
+\]
+
+% TODO clean up the typesetting here
 
 %% \printbibliography
 \end{document}
