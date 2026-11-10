@@ -2,7 +2,6 @@
 \documentclass{article}
 
 \usepackage{ebproof}
-\usepackage{listings}
 \usepackage{xcolor}
 \usepackage{geometry}
 \usepackage{amsthm}
@@ -10,29 +9,6 @@
 \usepackage{tikz}
 
 \geometry{margin=1.5in}
-
-\lstset{
-  frame=none,
-  xleftmargin=2pt,
-  stepnumber=1,
-  numbers=left,
-  numbersep=5pt,
-  numberstyle=\ttfamily\tiny\color[gray]{0.3},
-  belowcaptionskip=\bigskipamount,
-  captionpos=b,
-  escapeinside={*'}{'*},
-  language=haskell,
-  tabsize=2,
-  emphstyle={\bf},
-  commentstyle=\it,
-  stringstyle=\mdseries\rmfamily,
-  showspaces=false,
-  keywordstyle=\bfseries\rmfamily,
-  columns=flexible,
-  basicstyle=\small\sffamily,
-  showstringspaces=false,
-  morecomment=[l]\%,
-}
 
 \newcommand{\todo}[1]{\textcolor{red}{#1}}
 
@@ -62,6 +38,7 @@
 
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}[theorem]{Definition}
 
 \title{Featherweight ATS3 Report}
 \author{Thomas Ulmer}
@@ -71,7 +48,6 @@
 
 \todo{intro / motivation / background}
 
-%% \section{Dynamic Language}
 \section{Terms and Evaluation}
 
 Let $x,y,z$ range over terms, $T,X,Y$ be names of types. We assume $\alpha$-renaming has been done everywhere where necessary to avoid name collision. Parenthesis exist only in the meta language for grouping, they have no semantic significance.
@@ -186,6 +162,12 @@ Altered to only capture $\ve$:
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
+      \hypo{\de(n) = \lda \tau n\la X\ra = e , \ve' \rda \pp \hole}
+      \hypo{\ve',\de \vd e \da V}
+      \infer2{\ve,\de\vd \gamma n \la X \ra \da V}
+    \end{prooftree}
+    \\[15pt]
+    \begin{prooftree}
       \hypo{\de(n) = \lda \tau n\la Y\ra = \hole , \hole\rda \pp rs}
       \hypo{X \neq Y}
       \hypo{\lda \tau n\la X\ra = e , \ve' \rda \in rs}
@@ -194,54 +176,6 @@ Altered to only capture $\ve$:
     \end{prooftree}
   \end{array}
 \end{displaymath}
-
-%% \begin{displaymath}
-%% \begin{array}{@{}l@{\quad}c@{\quad}c@{}}
-%% \text{term} & \text{Full capturing} & \text{One-sided capturing}\\
-%% \hline
-%% \begin{array}{l}
-%% \Phi m{:}W.\,\Phi n{:}W.\,
-%% \tau m\langle A\rangle=V_1.\,
-%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
-%% \qquad \tau m\langle A\rangle=V_2.\,
-%% \gamma(n\langle A\rangle)
-%% \end{array}
-%% & V_1 & V_2
-%% \\[3mm]
-%% \begin{array}{l}
-%% \Phi n{:}W.\,
-%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\,
-%% \Phi m{:}W.\,
-%% \tau m\langle A\rangle=V_1.\,
-%% \gamma(n\langle A\rangle)
-%% \end{array}
-%% & \mathsf{stuck} & V_1
-%% \\[3mm]
-%% \begin{array}{l}
-%% \Phi m{:}W.\,\Phi n{:}W.\,
-%% \tau m\langle A\rangle=V_1.\,
-%% \tau n\langle A\rangle=\gamma(m\langle A\rangle).\\
-%% \qquad \Phi m{:}W.\,
-%% \gamma(n\langle A\rangle)
-%% \end{array}
-%% & V_1 & \mathsf{stuck}
-%% \end{array}
-%% \end{displaymath}
-
-%% Demonstrating late binding:
-%% \begin{displaymath}
-%% \begin{array}{@{}l@{\quad}c@{\quad}c@{}}
-%% \text{term} & \text{Full capturing} & \text{One-sided capturing}\\
-%% \hline
-%% \begin{array}{l}
-%% \tau n\langle A\rangle=\gamma(n\langle B\rangle).\\
-%% \tau n\langle B\rangle=\gamma(m\langle B\rangle).\\
-%% \tau m\langle B\rangle=V_1.\\
-%% \gamma(n\langle A\rangle)
-%% \end{array}
-%% & \mathsf{stuck} & V_1
-%% \end{array}
-%% \end{displaymath}
 
 \subsection{Dynamic Dispatch}
 
@@ -274,14 +208,14 @@ Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
     \begin{prooftree}
       \hypo{E(n) = \lda \tau n \la X \ra = e, E^\ve_0 \rda \pp \hole}
       \hypo{E^\ve_0 \uplus E^\de \vd e \da V}
-      \infer2{E \ve \gamma n\la X\ra \da V}
+      \infer2{E \vd \gamma n\la X\ra \da V}
     \end{prooftree}
     \\[15pt]
     \begin{prooftree}
       \hypo{E(n) = \lda \tau n \la X \ra = \hole, \hole \rda \pp rs}
       \hypo{X \neq Y}
       \hypo{E^\ve \uplus \left. E^\de \right|_n = rs \vd e \da V}
-      \infer3{E \ve \gamma n\la Y\ra \da V}
+      \infer3{E \vd \gamma n\la Y\ra \da V}
     \end{prooftree}
   \end{array}
 \end{displaymath}
@@ -340,21 +274,3 @@ Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
 
 %% \printbibliography
 \end{document}
-
-%% \subsection{Type System}
-
-%% There is a kind named $\kstar$ and for kind $k_1$ and $k_2$, a kind $k_1 \to_k k_2$. where $\to_k$ is the arrow construcor on kinds and distinct from the arrow construcor on types (which has kind $\kstar \to_k \kstar \to_k \kstar$)
-
-%% There is some fixed set of types and type constructors with associated kind. This set contains at least the arrow constructor for function types.
-
-%% For any type of kind $\kstar$, there is some fixed set of constructors.
-
-%% A type variable is some name $a$ that ranges over some single kind. As such it can appear as the type of a term, as an argument to a type constructor, or in the place of a type constructor. In all cases the kinds much match for the type to be well formed. The context $\ga$ contains both mappinngs from term names to types, as well as type variable names to types in contexts where they are instantiated. As with term names, we assume no collisions in names between type variables and between terms and type variables.
-
-%% A substitution is a finite partial mapping of type variables to types, which may contain other type variables but not the one being mapped. We treat substitutions as sets of pairs $(a,X)$ of variables $a$ to types $X$. Substitutions can be merged if they agree on all intersecting variables. Subsitutions can be composed with direction by iteratively applying the substitutions of the left to the types on the right, and merging the resulting sets. A substitution can be applied to a type containing type variables, written $\subst{s}{T}$. This proceeds by the intuative recursive substitution on the tree of types and type constructors. We may also write $\subst{s}{e}$ for this application applied recursively to all types that appear in term $e$.
-
-%% We define a partial function $\match{\vec{x}}{\vec{y}}$ on tuples $(x_1, x_2, x_3)$ and $(y_1, y_2, y_3)$ for types $x_i,y_i$. Two vectors match if and only if they are of the same length, for all pairs $x_i, y_i$ there is some unifying substitution $s_i$ such that $\subst{s_i}{x_i} = y_i$, and that all $s_i$ agree on all pairwise intersections. Thus a successful matching produces some overall substitution $s$ where we have that $\subst{s}{x_i} = y_i$ for all $i$ by construction. This function is efficiently computable and always produces a minimal substitution if one exists. See \todo{citing format} ``Typing Haskell in Haskell'' for a definition of this matching function and a comprehensible treatment of all of type level machinery used here.
-
-%% Two types, possibly containing type variables, may be unifiable. A (left) unification of $X$ and $Y$ if it exists is a substiution $s$ such that $\subst{s}{X} = Y$ exactly.
-
-%% Note that we treat types containing type variables as a family of types implicitly for all qualified over the set of type variables that occur in the type. Thus we treat \verb|List 'a| as $\forall a . \mathrm{List}\ a$ in some contexts. We still may check for equality over these terms, simply by requiring that the structure is identical and that where variables appear they match exactly, ie we take equality without $\alpha$-equivlence. \todo{Don't love this, do I need an order on qualifers? Maybe not necessary}
