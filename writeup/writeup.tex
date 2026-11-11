@@ -64,7 +64,7 @@ Terms may be one of the following:
 
 We will assume for the evaluation that the term is well typed and that for all template uses the search terminates successfully. \todo{This is motivated below}. We will eshew writing types.
 
-We show several variants on evaluation on this language based on different notions of capturing. We write $\ve(x)$ for the value associated with $x$ in environment $\ve$. We write $\ve \vdash e \da v$ for $e$ evaluating to value $v$ in environment $\ve$. We wrinte $\ve[x \to V]$ for environment $\ve$ altered such that $x$ points to $V$. We write $x\pp xs$ for prepending $x$ to ordered container $xs$, where the empty container is $\emptyset$. Note that $\langle\rangle$ has both syntactic meaning and is used for closures, though the contexts are disjoint. We assume the $\de(n) = \emptyset \forall n$ initially.
+We show several variants on evaluation on this language based on different notions of capturing. We write $\ve(x)$ for the value associated with $x$ in environment $\ve$. We write $\ve \vdash e \da v$ for $e$ evaluating to value $v$ in environment $\ve$. We wrinte $\ve[x \to V]$ for environment $\ve$ altered such that $x$ points to $V$. We write $x\pp xs$ for prepending $x$ to ordered container $xs$, where the empty container is $\emptyset$. Note that $\langle\rangle$ has both syntactic meaning and is used for closures, though the contexts are disjoint. We assume $\forall n \st \de(n) = \emptyset$ initially.
 
 We first present variants where the static argument of a template must match exactly for simplicity. \todo{This can be loosened to type unification.}
 
@@ -222,6 +222,7 @@ Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
 
 
 \subsection{Examples}
+\todo{clean this up}
 
 \[
 \begin{array}{@{}l@{\quad}c@{\quad}c@{\quad}c@{}}
@@ -253,13 +254,7 @@ Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
 \gamma(n\langle A\rangle)
 \end{array}
 & V_1 & \mathsf{stuck} & \mathsf{stuck}
-\end{array}
-\]
-
-\[
-\begin{array}{@{}l@{\quad}c@{\quad}c@{\quad}c@{}}
-\text{term} & \text{Full} & \text{One-sided} & \text{Dynamic dispatch}\\
-\hline
+\\[3mm]
 \begin{array}{l}
 \tau n\langle A\rangle=\gamma(n\langle B\rangle).\;
 \tau n\langle B\rangle=\gamma(m\langle B\rangle).\\
@@ -269,6 +264,109 @@ Write $E^\ve$ for its value entries and $E^\de$ for its template entries.
 & \mathsf{stuck} & V_1 & V_1
 \end{array}
 \]
+
+\subsection{Equivalence}
+
+\begin{definition}
+  A term $e$ is closed if for every variable $x_i$ in $e$, the binding lambda for $x_i$ is also in $e$. Note that a term being closed does not restrict the template names occurring within it in any way.
+\end{definition}
+
+\begin{definition}
+  A term $e$ is simple if it does not contain any $\Phi$, $\tau$, or $\gamma$ constructions.
+\end{definition}
+
+\begin{definition}
+  We say two evalutation systems are observationally equivalent if for all all closed terms one terminates if and only if the other terminates and for terminating terms the resulting value is identical.
+\end{definition}
+
+In a term $\tau n \la X \ra = e_1 \st e_2$, we refer to $e_1$ as the body of the top level $\tau$ term.
+
+\begin{lemma}
+  The $\ve,\de$ one sided capture evaluation and the single environment dynamic dispatch evaluation are observational equivalent.
+\end{lemma}
+\begin{proof}
+  As template names and term names are taken to be disjoint, it is always possible to separate the single environment into a term and template environments. All other rules are equivalent up to renaming the environment. \todo{Do I have the right behavior for Dynamic Dispatch? Seems too simple}
+\end{proof}
+
+We will work with the $\ve,\de$ system to avoid extra super and subscripts. We give a template resolution and elimination algorithm, defined recursively on terms. Let $R(d,e)$ be the resolution of term $e$ with template environment $d$. The template resolution will follow the evaluation of the one sided system closely. $d$ is a partial mapping from template names to a ordered sequence of terms, similar to $\de$. 
+
+For all simple terms, $R(d,e)$ is equivalent to $e$:
+\begin{displaymath}
+  \begin{array}{c}
+    R(d,x) = x  \\[10pt]
+    R(d, \lambda x\cl T \st e) = \lambda x \cl T \st R(d,e)\\[10pt]
+    R(d,xy) = R(d,x)R(d,y)
+  \end{array}
+\end{displaymath}
+For terms containing templates:
+\begin{displaymath}
+  \begin{array}{cc}
+    R(d,\Phi n \cl W \st e) = R(d[n\to \emptyset], e) & \\[10pt]
+    R(d,\tau (n \langle X \rangle = e_1) \st e_2) = R(d[n \to (X,e_1)], e_2) & \\[10pt]
+    R(d,\gamma n \langle X \rangle) = R(d,e_1) & \mathrm{where}\ d(n) = (X,e_1)
+  \end{array}
+\end{displaymath}
+Intuitively $R$ walks down the tree stripping off template information and building the environment $d$. Note that $R$ on $\gamma$ terms does not perform any environment switching or evaluate in a closure. As with the evaluation rules the template environment $\de$ is not captured in $\tau$ terms and we justify the lack of $\ve$ capture below.
+
+\begin{lemma}[Free Variable Visibility]
+  \label{visible}
+  Let well formed term $e$ contain some subterm $\tau_i (n \la X \ra = e_{i1}) \st e_{i2}$ for some terms $e_{i1}, e_{i1}$, template name $n$, and type $X$. Let $x_j$ be a free variable in $e_{i1}$. Then if $x_j$ appears in $e_{i2}$, it is also free in $e_{i2}$ and both refer to the same binding lambda which surrounds the entire $\tau_i$ term.
+\end{lemma}
+\begin{proof}
+  We proceed by case analysis on the location of the binding lambda for $x_j$. If $x_j$ is free in $e$, then by definition the binding lambda must occur surrounding both $e_{i1}$ and $e_{i2}$. If the binding lambda occurs in $e_{i1}$ then $x_j$ is not free in $e_{i1}$, violating our assumptions. If the binding lambda for $x_j$ occurs in $e_{i2}$ then $e$ is not well formed, violating our assumptions. If the binding lambda for $x_j$ occurs in $e$ but not in $e_{i1}$ or $e_{i2}$, then it must occur surrounding all of $\tau_i$. This exhausts the cases. Thus the proposition holds.
+\end{proof}
+
+\begin{lemma}
+  Let $e$ be simple. Then $\ve \vd e \da V$, or equivalently $\ve,\hole \vd e \da V$, the one sided evaluation of simple terms does not depend on $\de$.
+\end{lemma}
+\begin{proof}
+  This is evident from the evaluation rules for the $\ve,\de$ system. No rule for simple terms inspects $\de$.
+\end{proof}
+
+\begin{lemma}
+  For all closed simple terms, evaluation in $\ve,\hole$ is observationally equivalent to $\ve',\hole$ for all $\ve,\ve'$.
+\end{lemma}
+\begin{proof}
+  Let $e$ be a closed simple term. $\ve,\hole \vd e \da V$ by the previous lemma. As $e$ is closed, there exists no variable $x$ in $e$ which does not appear within a surrounding lambda binding for $x$. Thus there is no subterm which can refer to any variable outside of $e$. It follows that $\hole,\hole \vd e \da V$, or equivalently that $e$'s evaluation does not depend on the contents of environment $\ve$.
+\end{proof}
+
+\begin{theorem}
+  For all terms $e$ where all $\tau$ subterms have simple bodies, beginning in empty environments $\ve_0,\de_0$, then $\ve_0,\de_0 \vd e \da V \iff \ve_0,\hole \vd R(d_0, e) \da V$ holds, or in prose: the one sided evaluation of $e$ is observationally equivalent to the one sided evaluation of $R(d_0,e)$ in $\ve_0,\hole$ where $d_0$ is the initial empty map.
+\end{theorem}
+\begin{proof}
+  For simple $e$, this holds trivially as $R(d_0)$ is the identity.
+
+  For $e$ not containing $\gamma$ as a subterm, this holds trivially as $R(d_0)$ simply strips off the $\Phi$ and $\tau$ terms, which do not contribute to the final value in the original $\ve,\de$ evaluation.
+
+  Let $e$ contain at least one $\gamma$ subterm.
+  
+  Assume that for all $\tau_i$ terms in $e$, the body $e_{i1}$ is closed and simple.
+
+  Without loss of generality let the proof tree for the one sided evaluation of $e$ contain some subtree:
+  \begin{displaymath}
+    \begin{prooftree}
+      \hypo{\de(n) = \lda \tau n\la X\ra = e_{i1} , \ve' \rda \pp \hole}
+      \hypo{\vdots}
+      \infer1{\ve',\de \vd e_{i1} \da V}
+      \infer2{\ve,\de\vd \gamma n \la X \ra \da V}
+    \end{prooftree}    
+  \end{displaymath}
+  We know by the previous lemma that $\forall \ve_j\forall \de_j \st \ve_j,\de_j \vd e_{i1} \da V$. Thus the theorem holds for terms where templates are closed and simple, as evaluating $e_{i1}$ in the captured environment $\ve'$ makes no difference compared to the environment at the use site $\ve$.
+
+  We have by assumption that for all $\tau_i$ subterms of $e$ the body $e_{i1}$ is simple. If $e_{i1}$ is closed we have already shown that the theorem holds. If $e_{i1}$ contains some free variable $x_j$, then by Lemma \ref{visible} we have that $x_j$ is in scope everywhere in $e_{i2}$ with the same binding lambda as $e_{i1}$ in $e$. Let $\ve$ be the environment at the root of the subtree rooted at $\tau_i$. Let $\ve'$ be the environment at the subtree rooted at each $\gamma$ in $e_{i2}$. We have that $\ve$ and $\ve'$ must agree on all variables that might appear free in $e_{i1}$. Thus the evaluations of the chosen template body in $\ve$ and $\ve'$ are observationally equivalent. 
+\end{proof}
+
+Thus for terms with non-recursive templates, we have shown that templates may be resolved and erased first and the resulting term can be evaluated without reference to any template environment, and that said evaluation is observationally equivalent to the semantics defining evaluation in the one sided capturing setting.
+
+\subsection{Recursive Templates}
+
+Consider some expression $e$ which may contain one or more $\tau$ subterms, where the body of each $\tau$ term may contain $\gamma$ subterms. Let $\gamma_0$ be some subterm of $e$ not in a $\tau$ body, $\gamma_1$ be a subterm exposed by $R$ resolution of $\gamma_0$ where $R$ passes over no other $\gamma$ between them, and so on. Thus the resulting chain is maximal and for programs with terminating evaluation under $\ve,\de$, each chain will be finite. \todo{be more specific and careful here. Also make this clear that it applies to trees not just straightline unfoldings} 
+
+Let $e_1$ be a subterm of the expansion of $\gamma_0$ but not contained in the expansion of $\gamma_1$. By the same argument from the theorem in the last section, we know that either $e_1$ is closed and thus evaluates equivalently in any environment, or $e_1$ has some free variable $x_j$. We know by Lemma \ref{visible} that $x_j$ bound by some lambda surrounding $\gamma_0$ and thus is in scope with an equivalent bound value to the captured environment. Thus the evaluation of $e_1$ is observationally equivalent to its evaluation in the $\ve,\de$ context. 
+
+Thus we have that any term that occurs between $\gamma_0$ and $\gamma_1$ during  the expansion by $R$ is unchanged, and that any further template exposed by $R$ on $\gamma_o$ must be in $\gamma_1$ for some chain. The same argument applies inductively between $\gamma_i$ and $\gamma_{i+1}$ for each chain until they are exhausted, or $R$ is non-terminating on $e$.
+
+\todo{I like this setup, but it needs to be tighter, the notion of order is still kind of handwavy.}
 
 % TODO clean up the typesetting here
 
